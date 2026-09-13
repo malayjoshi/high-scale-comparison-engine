@@ -1,0 +1,26 @@
+# Terraform working directories and state
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+*.tfplan
+
+# Local Terraform overrides and variable values
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+*.tfvars
+*.tfvars.json
+
+# The repository root is not a Terraform module. Keep the module lock file
+# under terraform/, but ignore a lock file generated accidentally at root.
+/.terraform.lock.hcl
+
+# Local/editor files
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*~
