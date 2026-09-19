@@ -20,18 +20,6 @@ resource "aws_subnet" "comparison_engine_subnet_ec2_2" {
   availability_zone = "eu-west-1b"
 }
 
-resource "aws_alb" "comparison_engine_alb" {
-  name               = "comparison-engine-alb"
-  load_balancer_type = "application"
-  internal           = false
-  subnets = [
-    aws_subnet.comparison_engine_subnet_ec2_1.id,
-    aws_subnet.comparison_engine_subnet_ec2_2.id
-  ]
-  security_groups = [aws_security_group.alb_sg_comparison_engine.id]
-
-}
-
 resource "aws_launch_template" "comparison_engine_launch_template" {
   name                   = "comparison-engine-launch-template"
   image_id               = "ami-0c55b159cbfafe1f0"
@@ -39,6 +27,10 @@ resource "aws_launch_template" "comparison_engine_launch_template" {
   user_data              = ""
   vpc_security_group_ids = [aws_security_group.ec2_sg_comparison_engine.id]
   update_default_version = true
+
+  iam_instance_profile {
+    name = aws_iam_instance_profile.comparison_worker.name
+  }
 }
 
 resource "aws_autoscaling_group" "comparison_engine_asg" {
@@ -55,4 +47,19 @@ resource "aws_autoscaling_group" "comparison_engine_asg" {
     id      = aws_launch_template.comparison_engine_launch_template.id
     version = "$Latest"
   }
+}
+
+resource "aws_sqs_queue" "comparison_engine_dlq" {
+  name                      = "comparison-engine-dlq"
+  message_retention_seconds = 1209600
+}
+
+resource "aws_sqs_queue" "comparison_engine_queue" {
+  name                       = "comparison-engine-queue"
+  visibility_timeout_seconds = 900
+
+  redrive_policy = jsonencode({
+    deadLetterTargetArn = aws_sqs_queue.comparison_engine_dlq.arn
+    maxReceiveCount     = 5
+  })
 }

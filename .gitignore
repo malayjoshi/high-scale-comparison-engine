@@ -24,3 +24,9 @@ override.tf.json
 .vscode/
 *.swp
 *~
+
+# Local Python environments and runtime configuration
+**/.venv/
+**/.env
+**/__pycache__/
+*.py[cod]
