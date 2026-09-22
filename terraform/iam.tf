@@ -62,6 +62,20 @@ resource "aws_iam_role_policy" "comparison_worker_sqs" {
   })
 }
 
+resource "aws_iam_role_policy" "comparison_worker_database_secret" {
+  name = "comparison-engine-worker-database-secret-policy"
+  role = aws_iam_role.comparison_worker.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = "secretsmanager:GetSecretValue"
+      Resource = aws_db_instance.comparison_engine.master_user_secret[0].secret_arn
+    }]
+  })
+}
+
 resource "aws_iam_instance_profile" "comparison_worker" {
   name = "comparison-engine-worker-profile"
   role = aws_iam_role.comparison_worker.name

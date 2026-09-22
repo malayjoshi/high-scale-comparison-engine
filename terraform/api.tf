@@ -19,7 +19,12 @@ resource "aws_api_gateway_method" "enqueue_job" {
   rest_api_id   = aws_api_gateway_rest_api.comparison_engine.id
   resource_id   = aws_api_gateway_resource.jobs.id
   http_method   = "POST"
-  authorization = "NONE"
+  authorization = "COGNITO_USER_POOLS"
+  authorizer_id = aws_api_gateway_authorizer.comparison_engine.id
+
+  authorization_scopes = [
+    "${aws_cognito_resource_server.comparison_engine.identifier}/jobs.write"
+  ]
 }
 
 resource "aws_api_gateway_integration" "sqs" {
@@ -64,6 +69,9 @@ resource "aws_api_gateway_deployment" "comparison_engine" {
     redeployment = sha1(jsonencode([
       aws_api_gateway_resource.jobs.id,
       aws_api_gateway_method.enqueue_job.id,
+      aws_api_gateway_method.enqueue_job.authorization,
+      aws_api_gateway_method.enqueue_job.authorization_scopes,
+      aws_api_gateway_authorizer.comparison_engine.id,
       aws_api_gateway_integration.sqs.id
     ]))
   }

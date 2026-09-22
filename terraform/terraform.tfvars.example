@@ -1,0 +1,10 @@
+microsoft_saml_metadata_url = "https://login.microsoftonline.com/TENANT_ID/federationmetadata/2007-06/federationmetadata.xml"
+cognito_domain_prefix       = "company-comparison-engine"
+
+oauth_callback_urls = [
+  "https://comparison.company.com/oauth/callback"
+]
+
+oauth_logout_urls = [
+  "https://comparison.company.com/"
+]
