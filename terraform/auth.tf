@@ -80,6 +80,16 @@ resource "aws_cognito_user_pool_client" "comparison_engine" {
   logout_urls                   = var.oauth_logout_urls
   supported_identity_providers  = [aws_cognito_identity_provider.microsoft.provider_name]
   prevent_user_existence_errors = "ENABLED"
+
+  access_token_validity  = 55
+  id_token_validity      = 55
+  refresh_token_validity = 1
+
+  token_validity_units {
+    access_token  = "minutes"
+    id_token      = "minutes"
+    refresh_token = "hours"
+  }
 }
 
 resource "aws_cognito_user_pool_domain" "comparison_engine" {
