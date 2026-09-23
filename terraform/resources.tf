@@ -21,10 +21,20 @@ resource "aws_subnet" "comparison_engine_subnet_ec2_2" {
 }
 
 resource "aws_launch_template" "comparison_engine_launch_template" {
-  name                   = "comparison-engine-launch-template"
-  image_id               = "ami-0c55b159cbfafe1f0"
-  instance_type          = "t2.micro"
-  user_data              = ""
+  name          = "comparison-engine-launch-template"
+  image_id      = local.worker_ami_id
+  instance_type = "t2.micro"
+  user_data = base64encode(templatefile("${path.module}/worker-user-data.sh.tftpl", {
+    aws_region          = data.aws_region.current.region
+    database_endpoint   = aws_db_instance.comparison_engine.endpoint
+    database_name       = aws_db_instance.comparison_engine.db_name
+    database_secret_arn = aws_db_instance.comparison_engine.master_user_secret[0].secret_arn
+    dummy_data_version  = var.dummy_data_version
+    efs_id              = aws_efs_file_system.comparison_data.id
+    queue_url           = aws_sqs_queue.comparison_engine_queue.url
+    results_bucket      = aws_s3_bucket.comparison_results.id
+    seed_bucket         = aws_s3_bucket.dummy_data.id
+  }))
   vpc_security_group_ids = [aws_security_group.ec2_sg_comparison_engine.id]
   update_default_version = true
 
@@ -47,6 +57,17 @@ resource "aws_autoscaling_group" "comparison_engine_asg" {
     id      = aws_launch_template.comparison_engine_launch_template.id
     version = "$Latest"
   }
+
+  depends_on = [
+    aws_efs_mount_target.worker_1,
+    aws_efs_mount_target.worker_2,
+    aws_iam_role_policy.comparison_worker_database_secret,
+    aws_iam_role_policy.comparison_worker_results,
+    aws_iam_role_policy.comparison_worker_seed_data,
+    aws_iam_role_policy.comparison_worker_sqs,
+    aws_vpc_endpoint.s3,
+    terraform_data.dummy_data_archive
+  ]
 }
 
 resource "aws_sqs_queue" "comparison_engine_dlq" {

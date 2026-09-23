@@ -76,6 +76,34 @@ resource "aws_iam_role_policy" "comparison_worker_database_secret" {
   })
 }
 
+resource "aws_iam_role_policy" "comparison_worker_seed_data" {
+  name = "comparison-engine-worker-seed-data-policy"
+  role = aws_iam_role.comparison_worker.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = "s3:GetObject"
+      Resource = "${aws_s3_bucket.dummy_data.arn}/dummy_data.tar.gz"
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "comparison_worker_results" {
+  name = "comparison-engine-worker-results-policy"
+  role = aws_iam_role.comparison_worker.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = "s3:PutObject"
+      Resource = "${aws_s3_bucket.comparison_results.arn}/comparison-results/*"
+    }]
+  })
+}
+
 resource "aws_iam_instance_profile" "comparison_worker" {
   name = "comparison-engine-worker-profile"
   role = aws_iam_role.comparison_worker.name

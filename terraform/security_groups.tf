@@ -21,6 +21,39 @@ resource "aws_security_group" "ec2_sg_comparison_engine" {
       aws_subnet.comparison_engine_rds_2.cidr_block
     ]
   }
+
+  egress {
+    description = "NFS to EFS mount targets"
+    protocol    = "tcp"
+    from_port   = 2049
+    to_port     = 2049
+    cidr_blocks = [
+      aws_subnet.comparison_engine_subnet_ec2_1.cidr_block,
+      aws_subnet.comparison_engine_subnet_ec2_2.cidr_block
+    ]
+  }
+
+  egress {
+    description     = "HTTPS to S3 through the gateway endpoint"
+    protocol        = "tcp"
+    from_port       = 443
+    to_port         = 443
+    prefix_list_ids = [aws_vpc_endpoint.s3.prefix_list_id]
+  }
+}
+
+resource "aws_security_group" "efs" {
+  name        = "comparison-engine-efs-sg"
+  description = "Allow NFS from comparison workers"
+  vpc_id      = aws_vpc.comparison_engine_vpc.id
+
+  ingress {
+    description     = "NFS from comparison workers"
+    protocol        = "tcp"
+    from_port       = 2049
+    to_port         = 2049
+    security_groups = [aws_security_group.ec2_sg_comparison_engine.id]
+  }
 }
 
 resource "aws_security_group" "sqs_endpoint" {

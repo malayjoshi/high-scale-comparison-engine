@@ -1,0 +1,64 @@
+#!/bin/bash
+set -euo pipefail
+
+export AWS_DEFAULT_REGION="${aws_region}"
+mount_path="/mnt/comparison-engine"
+
+if ! command -v mount.efs >/dev/null 2>&1; then
+  if command -v dnf >/dev/null 2>&1; then
+    dnf install -y amazon-efs-utils awscli
+  else
+    yum install -y amazon-efs-utils awscli
+  fi
+fi
+
+mkdir -p "$mount_path"
+if ! grep -q '^${efs_id}:/' /etc/fstab; then
+  echo '${efs_id}:/ /mnt/comparison-engine efs _netdev,tls 0 0' >> /etc/fstab
+fi
+
+for attempt in $(seq 1 30); do
+  mountpoint -q "$mount_path" || mount "$mount_path" || true
+  mountpoint -q "$mount_path" && break
+  sleep 5
+done
+mountpoint -q "$mount_path"
+
+exec 9>"$mount_path/.dummy-data.lock"
+flock -x 9
+
+marker="$mount_path/.dummy-data-${dummy_data_version}.complete"
+if [ ! -f "$marker" ]; then
+  seed_path="$mount_path/.dummy-data-seed"
+  rm -rf "$seed_path"
+  mkdir -p "$seed_path"
+  aws s3 cp "s3://${seed_bucket}/dummy_data.tar.gz" - | tar -xzf - -C "$seed_path"
+  rm -rf "$mount_path/dummy_data"
+  mv "$seed_path/dummy_data" "$mount_path/dummy_data"
+  rmdir "$seed_path"
+  touch "$marker"
+fi
+
+if ! id comparison-worker >/dev/null 2>&1; then
+  useradd --system --home-dir /opt/comparison-engine --shell /sbin/nologin comparison-worker
+fi
+install -d -o comparison-worker -g comparison-worker /var/tmp/comparison-engine
+cat > /etc/comparison-worker.env <<'EOF'
+AWS_DEFAULT_REGION=${aws_region}
+COMPARISON_QUEUE_URL=${queue_url}
+COMPARISON_DATABASE_ENDPOINT=${database_endpoint}
+COMPARISON_DATABASE_NAME=${database_name}
+COMPARISON_DATABASE_SECRET_ARN=${database_secret_arn}
+COMPARISON_RESULTS_BUCKET=${results_bucket}
+COMPARISON_DATA_ROOT=/mnt/comparison-engine/dummy_data
+COMPARISON_RESULT_ROOT=/var/tmp/comparison-engine
+EOF
+chmod 600 /etc/comparison-worker.env
+
+# The worker and its virtual environment are baked into the worker AMI.
+if [ -f /opt/comparison-engine/scripts/comparison-worker.service ]; then
+  install -m 0644 /opt/comparison-engine/scripts/comparison-worker.service \
+    /etc/systemd/system/comparison-worker.service
+  systemctl daemon-reload
+  systemctl enable --now comparison-worker.service
+fi

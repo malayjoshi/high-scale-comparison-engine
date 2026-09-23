@@ -42,7 +42,9 @@ resource "aws_api_gateway_integration" "sqs" {
   }
 
   request_templates = {
-    "application/json" = "Action=SendMessage&MessageBody=$util.urlEncode($input.body)"
+    "application/json" = <<-VTL
+      #set($message = "{\"job_id\":\"$util.escapeJavaScript($input.path('$.job_id'))\",\"folder\":$input.json('$.folder'),\"timestamp\":\"$util.escapeJavaScript($input.path('$.timestamp'))\",\"user_id\":\"$util.escapeJavaScript($context.authorizer.claims.sub)\"}")Action=SendMessage&MessageBody=$util.urlEncode($message)
+    VTL
   }
 }
 
@@ -72,7 +74,8 @@ resource "aws_api_gateway_deployment" "comparison_engine" {
       aws_api_gateway_method.enqueue_job.authorization,
       aws_api_gateway_method.enqueue_job.authorization_scopes,
       aws_api_gateway_authorizer.comparison_engine.id,
-      aws_api_gateway_integration.sqs.id
+      aws_api_gateway_integration.sqs.id,
+      aws_api_gateway_integration.sqs.request_templates
     ]))
   }
 

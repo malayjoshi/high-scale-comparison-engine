@@ -3,6 +3,21 @@ output "jobs_api_url" {
   value       = "${aws_api_gateway_stage.production.invoke_url}/jobs"
 }
 
+output "comparison_queue_url" {
+  description = "SQS queue polled by comparison workers"
+  value       = aws_sqs_queue.comparison_engine_queue.url
+}
+
+output "comparison_results_bucket" {
+  description = "Private S3 bucket containing folder-pair comparison JSON"
+  value       = aws_s3_bucket.comparison_results.id
+}
+
+output "worker_ami_id" {
+  description = "AMI selected for the comparison worker launch template"
+  value       = local.worker_ami_id
+}
+
 output "database_endpoint" {
   description = "Private PostgreSQL endpoint for the comparison workers"
   value       = aws_db_instance.comparison_engine.endpoint
@@ -11,6 +26,16 @@ output "database_endpoint" {
 output "database_master_secret_arn" {
   description = "Secrets Manager ARN containing the RDS-managed master credentials"
   value       = aws_db_instance.comparison_engine.master_user_secret[0].secret_arn
+}
+
+output "efs_file_system_id" {
+  description = "Shared filesystem mounted by comparison workers"
+  value       = aws_efs_file_system.comparison_data.id
+}
+
+output "worker_dummy_data_path" {
+  description = "Path containing the shared generated input data on every worker"
+  value       = "/mnt/comparison-engine/dummy_data"
 }
 
 output "cognito_client_id" {

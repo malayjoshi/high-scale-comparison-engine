@@ -1,0 +1,24 @@
+[Unit]
+Description=Comparison Engine SQS Worker
+After=network-online.target remote-fs.target
+Wants=network-online.target
+RequiresMountsFor=/mnt/comparison-engine
+
+[Service]
+Type=simple
+User=comparison-worker
+Group=comparison-worker
+WorkingDirectory=/opt/comparison-engine/scripts
+EnvironmentFile=/etc/comparison-worker.env
+ExecStart=/opt/comparison-engine/venv/bin/python -m src.handler
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadOnlyPaths=/mnt/comparison-engine
+ReadWritePaths=/var/tmp/comparison-engine
+
+[Install]
+WantedBy=multi-user.target
