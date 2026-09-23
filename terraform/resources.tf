@@ -31,6 +31,7 @@ resource "aws_launch_template" "comparison_engine_launch_template" {
     database_secret_arn = aws_db_instance.comparison_engine.master_user_secret[0].secret_arn
     dummy_data_version  = var.dummy_data_version
     efs_id              = aws_efs_file_system.comparison_data.id
+    event_bus_name      = aws_cloudwatch_event_bus.comparison_callbacks.name
     queue_url           = aws_sqs_queue.comparison_engine_queue.url
     results_bucket      = aws_s3_bucket.comparison_results.id
     seed_bucket         = aws_s3_bucket.dummy_data.id
@@ -62,10 +63,12 @@ resource "aws_autoscaling_group" "comparison_engine_asg" {
     aws_efs_mount_target.worker_1,
     aws_efs_mount_target.worker_2,
     aws_iam_role_policy.comparison_worker_database_secret,
+    aws_iam_role_policy.comparison_worker_events,
     aws_iam_role_policy.comparison_worker_results,
     aws_iam_role_policy.comparison_worker_seed_data,
     aws_iam_role_policy.comparison_worker_sqs,
     aws_vpc_endpoint.s3,
+    aws_vpc_endpoint.eventbridge,
     terraform_data.dummy_data_archive
   ]
 }

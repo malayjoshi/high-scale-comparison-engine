@@ -15,6 +15,7 @@ from typing import Any
 
 import boto3
 
+from .outbox import OutboxDispatcher
 from .repo import DatabaseConfig, JobRepository
 from .request_model import ComparisonJob
 from .result_store import S3ResultStore
@@ -31,6 +32,7 @@ class Settings:
     database_name: str
     database_secret_arn: str
     results_bucket: str
+    event_bus_name: str
     data_root: Path
     result_root: Path
     max_workers: int
@@ -45,6 +47,7 @@ class Settings:
             database_name=os.getenv("COMPARISON_DATABASE_NAME", "comparison_engine"),
             database_secret_arn=_required("COMPARISON_DATABASE_SECRET_ARN"),
             results_bucket=_required("COMPARISON_RESULTS_BUCKET"),
+            event_bus_name=_required("COMPARISON_EVENT_BUS_NAME"),
             data_root=Path(os.getenv("COMPARISON_DATA_ROOT", "/mnt/comparison-engine/dummy_data")),
             result_root=Path(os.getenv("COMPARISON_RESULT_ROOT", "/var/tmp/comparison-engine")),
             max_workers=int(os.getenv("COMPARISON_MAX_WORKERS", str(min(32, (os.cpu_count() or 1) * 2)))),
@@ -131,23 +134,32 @@ class Worker:
             settings.result_root,
             settings.max_workers,
         )
+        self.outbox = OutboxDispatcher(
+            self.repository,
+            session.client("events"),
+            settings.event_bus_name,
+        )
         self.stopping = False
 
     def run(self) -> None:
         self.repository.initialize()
-        while not self.stopping:
-            try:
-                response = self.sqs.receive_message(
-                    QueueUrl=self.settings.queue_url,
-                    MaxNumberOfMessages=1,
-                    WaitTimeSeconds=20,
-                    VisibilityTimeout=self.settings.visibility_timeout,
-                )
-                for message in response.get("Messages", []):
-                    self._handle(message)
-            except Exception:
-                LOG.exception("failed to receive or process a message")
-                time.sleep(5)
+        self.outbox.start()
+        try:
+            while not self.stopping:
+                try:
+                    response = self.sqs.receive_message(
+                        QueueUrl=self.settings.queue_url,
+                        MaxNumberOfMessages=1,
+                        WaitTimeSeconds=20,
+                        VisibilityTimeout=self.settings.visibility_timeout,
+                    )
+                    for message in response.get("Messages", []):
+                        self._handle(message)
+                except Exception:
+                    LOG.exception("failed to receive or process a message")
+                    time.sleep(5)
+        finally:
+            self.outbox.stop()
 
     def stop(self, _signal: int, _frame: FrameType | None) -> None:
         self.stopping = True
@@ -178,6 +190,7 @@ class Worker:
             )
             with heartbeat:
                 folder_results = []
+                result_locations = []
                 for pair in job.folders:
                     folder_result = self.comparison.compare_folders(pair)
                     completed_at = datetime.now(timezone.utc)
@@ -194,12 +207,13 @@ class Worker:
                         s3_location,
                     )
                     folder_results.append(folder_result)
+                    result_locations.append(s3_location)
                     heartbeat.raise_if_failed()
 
                 result = self.comparison.build_result(job, folder_results)
                 result_path = self.comparison.save(job.job_id, result)
                 heartbeat.raise_if_failed()
-                self.repository.complete(job.job_id, str(result_path))
+                self.repository.complete(job, str(result_path), result_locations)
         except Exception as exc:
             LOG.exception("comparison job failed")
             if claimed and job is not None:

@@ -84,6 +84,20 @@ resource "aws_security_group" "secrets_manager_endpoint" {
   }
 }
 
+resource "aws_security_group" "eventbridge_endpoint" {
+  name        = "comparison-engine-eventbridge-endpoint-sg"
+  description = "Allow HTTPS from comparison workers"
+  vpc_id      = aws_vpc.comparison_engine_vpc.id
+
+  ingress {
+    description     = "HTTPS from comparison workers"
+    protocol        = "tcp"
+    from_port       = 443
+    to_port         = 443
+    security_groups = [aws_security_group.ec2_sg_comparison_engine.id]
+  }
+}
+
 data "aws_region" "current" {}
 
 resource "aws_vpc_endpoint" "sqs" {
@@ -119,5 +133,23 @@ resource "aws_vpc_endpoint" "secrets_manager" {
 
   tags = {
     Name = "comparison-engine-secrets-manager-endpoint"
+  }
+}
+
+resource "aws_vpc_endpoint" "eventbridge" {
+  vpc_id              = aws_vpc.comparison_engine_vpc.id
+  service_name        = "com.amazonaws.${data.aws_region.current.region}.events"
+  vpc_endpoint_type   = "Interface"
+  private_dns_enabled = true
+
+  subnet_ids = [
+    aws_subnet.comparison_engine_subnet_ec2_1.id,
+    aws_subnet.comparison_engine_subnet_ec2_2.id
+  ]
+
+  security_group_ids = [aws_security_group.eventbridge_endpoint.id]
+
+  tags = {
+    Name = "comparison-engine-eventbridge-endpoint"
   }
 }

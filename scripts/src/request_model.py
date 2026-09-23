@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
@@ -19,6 +20,7 @@ class ComparisonJob:
     folders: tuple[FolderPair, ...]
     requested_at: datetime
     user_id: str
+    callback_id: str
 
     @classmethod
     def from_message(cls, body: str) -> "ComparisonJob":
@@ -27,6 +29,7 @@ class ComparisonJob:
             job_id = str(uuid.UUID(payload["job_id"]))
             requested_at = datetime.fromisoformat(payload["timestamp"].replace("Z", "+00:00"))
             user_id = payload["user_id"].strip()
+            callback_id = payload["callback_id"].strip()
             folders = tuple(
                 FolderPair(
                     source_folder=item["source_folder"].strip(),
@@ -41,6 +44,8 @@ class ComparisonJob:
             raise ValueError("invalid comparison job: timestamp must include a timezone")
         if not user_id:
             raise ValueError("invalid comparison job: user_id is required")
+        if not re.fullmatch(r"[A-Za-z0-9._-]{1,100}", callback_id):
+            raise ValueError("invalid comparison job: callback_id is invalid")
         if not folders:
             raise ValueError("invalid comparison job: at least one folder pair is required")
         if len(folders) != len(set(folders)):
@@ -49,4 +54,4 @@ class ComparisonJob:
             if not pair.source_folder or not pair.destination_folder:
                 raise ValueError("invalid comparison job: folder names cannot be empty")
 
-        return cls(job_id, folders, requested_at, user_id)
+        return cls(job_id, folders, requested_at, user_id, callback_id)

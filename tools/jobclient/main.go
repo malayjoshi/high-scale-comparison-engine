@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -23,10 +24,13 @@ type folderPair struct {
 }
 
 type comparisonJob struct {
-	JobID     string       `json:"job_id"`
-	Folder    []folderPair `json:"folder"`
-	Timestamp time.Time    `json:"timestamp"`
+	JobID      string       `json:"job_id"`
+	Folder     []folderPair `json:"folder"`
+	Timestamp  time.Time    `json:"timestamp"`
+	CallbackID string       `json:"callback_id"`
 }
+
+var callbackIDPattern = regexp.MustCompile(`^[A-Za-z0-9._-]{1,100}$`)
 
 type pairFlags []string
 
@@ -39,6 +43,7 @@ func (p *pairFlags) Set(value string) error {
 func main() {
 	var pairs pairFlags
 	apiURL := flag.String("api-url", os.Getenv("COMPARISON_ENGINE_API_URL"), "API Gateway /jobs URL")
+	callbackID := flag.String("callback-id", os.Getenv("COMPARISON_ENGINE_CALLBACK_ID"), "registered callback identifier")
 	dataRoot := flag.String("data-root", envOrDefault("COMPARISON_ENGINE_DATA_ROOT", "dummy_data"), "local dummy-data directory")
 	timeout := flag.Duration("timeout", 30*time.Second, "request timeout")
 	flag.Var(&pairs, "pair", "folder pair as source:destination; repeat for multiple pairs")
@@ -52,7 +57,7 @@ func main() {
 		log.Fatal("COMPARISON_ENGINE_TOKEN is required")
 	}
 
-	job, err := buildJob(*dataRoot, pairs, time.Now().UTC())
+	job, err := buildJob(*dataRoot, pairs, *callbackID, time.Now().UTC())
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -66,9 +71,12 @@ func main() {
 	fmt.Println(job.JobID)
 }
 
-func buildJob(dataRoot string, rawPairs []string, timestamp time.Time) (comparisonJob, error) {
+func buildJob(dataRoot string, rawPairs []string, callbackID string, timestamp time.Time) (comparisonJob, error) {
 	if len(rawPairs) == 0 {
 		return comparisonJob{}, errors.New("at least one -pair source:destination is required")
+	}
+	if !callbackIDPattern.MatchString(callbackID) {
+		return comparisonJob{}, errors.New("callback ID must contain 1-100 letters, numbers, dots, underscores, or hyphens")
 	}
 
 	pairs := make([]folderPair, 0, len(rawPairs))
@@ -90,7 +98,9 @@ func buildJob(dataRoot string, rawPairs []string, timestamp time.Time) (comparis
 	if err != nil {
 		return comparisonJob{}, fmt.Errorf("generate job ID: %w", err)
 	}
-	return comparisonJob{JobID: jobID, Folder: pairs, Timestamp: timestamp.UTC()}, nil
+	return comparisonJob{
+		JobID: jobID, Folder: pairs, Timestamp: timestamp.UTC(), CallbackID: callbackID,
+	}, nil
 
 }
 

@@ -42,6 +42,7 @@ class ComparisonServiceTest(unittest.TestCase):
                         ],
                         "timestamp": "2026-09-23T12:30:00Z",
                         "user_id": "microsoft-user-id",
+                        "callback_id": "client-production",
                     }
                 )
             )
@@ -82,6 +83,7 @@ class ComparisonServiceTest(unittest.TestCase):
                 (),
                 datetime.now(timezone.utc),
                 "user",
+                "callback",
             )
             with self.assertRaises(ValueError):
                 service._folder("../outside")

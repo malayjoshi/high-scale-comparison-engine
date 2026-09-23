@@ -23,6 +23,7 @@ class ResultStoreTest(unittest.TestCase):
             (FolderPair("folder_a", "folder_b"),),
             datetime(2026, 9, 23, 12, 0, tzinfo=timezone.utc),
             "microsoft-user-id",
+            "client-production",
         )
         completed_at = datetime(2026, 9, 23, 12, 5, tzinfo=timezone.utc)
 

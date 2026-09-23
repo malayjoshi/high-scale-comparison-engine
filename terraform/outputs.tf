@@ -18,6 +18,11 @@ output "worker_ami_id" {
   value       = local.worker_ami_id
 }
 
+output "comparison_event_bus_name" {
+  description = "EventBridge bus receiving transactional-outbox events"
+  value       = aws_cloudwatch_event_bus.comparison_callbacks.name
+}
+
 output "database_endpoint" {
   description = "Private PostgreSQL endpoint for the comparison workers"
   value       = aws_db_instance.comparison_engine.endpoint

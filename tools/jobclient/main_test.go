@@ -20,11 +20,11 @@ func TestBuildAndPostJob(t *testing.T) {
 	}
 
 	timestamp := time.Date(2026, 9, 23, 12, 30, 0, 0, time.UTC)
-	job, err := buildJob(dataRoot, []string{"folder_a:folder_b"}, timestamp)
+	job, err := buildJob(dataRoot, []string{"folder_a:folder_b"}, "client-production", timestamp)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(job.JobID) != 36 || job.Timestamp != timestamp || len(job.Folder) != 1 {
+	if len(job.JobID) != 36 || job.Timestamp != timestamp || len(job.Folder) != 1 || job.CallbackID != "client-production" {
 		t.Fatalf("unexpected job: %+v", job)
 	}
 
@@ -55,7 +55,7 @@ func TestBuildJobRejectsMissingOrEscapingFolders(t *testing.T) {
 	}
 
 	for _, pair := range []string{"folder_a:missing", "../folder_a:folder_a", "folder_a"} {
-		if _, err := buildJob(dataRoot, []string{pair}, time.Now()); err == nil {
+		if _, err := buildJob(dataRoot, []string{pair}, "client-production", time.Now()); err == nil {
 			t.Errorf("expected %q to fail", pair)
 		}
 	}

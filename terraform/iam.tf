@@ -104,6 +104,20 @@ resource "aws_iam_role_policy" "comparison_worker_results" {
   })
 }
 
+resource "aws_iam_role_policy" "comparison_worker_events" {
+  name = "comparison-engine-worker-events-policy"
+  role = aws_iam_role.comparison_worker.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = "events:PutEvents"
+      Resource = aws_cloudwatch_event_bus.comparison_callbacks.arn
+    }]
+  })
+}
+
 resource "aws_iam_instance_profile" "comparison_worker" {
   name = "comparison-engine-worker-profile"
   role = aws_iam_role.comparison_worker.name

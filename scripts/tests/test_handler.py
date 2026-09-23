@@ -14,6 +14,7 @@ MESSAGE = {
             "folder": [{"source_folder": "folder_a", "destination_folder": "folder_b"}],
             "timestamp": "2026-09-23T12:30:00Z",
             "user_id": "microsoft-user-id",
+            "callback_id": "client-production",
         }
     ),
 }
@@ -44,8 +45,8 @@ class FakeRepository:
     def heartbeat(self, _job_id: str) -> None:
         pass
 
-    def complete(self, job_id: str, path: str) -> None:
-        self.completed.append((job_id, path))
+    def complete(self, job: object, path: str, result_locations: list[str]) -> None:
+        self.completed.append((job.job_id, path, result_locations))
 
     def record_result(self, *args: object) -> None:
         self.results.append(args)
