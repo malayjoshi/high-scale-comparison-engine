@@ -30,3 +30,6 @@ override.tf.json
 **/.env
 **/__pycache__/
 *.py[cod]
+
+# Generated comparison fixtures (mounted as EFS in deployed environments)
+/dummy_data/
