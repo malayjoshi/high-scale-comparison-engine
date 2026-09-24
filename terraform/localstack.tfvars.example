@@ -1,0 +1,25 @@
+# LocalStack Pro control-plane deployment. Copy this file to
+# localstack.tfvars before applying; *.tfvars files are intentionally ignored.
+microsoft_saml_metadata_url = "https://login.microsoftonline.com/common/federationmetadata/2007-06/federationmetadata.xml"
+cognito_domain_prefix       = "comparison-engine-local"
+worker_ami_id               = "ami-0c55b159cbfafe1f0"
+s3_use_path_style           = true
+
+# LocalStack records step policies as disabled and does not emulate RDS
+# storage autoscaling. Real AWS keeps the production defaults instead.
+autoscaling_policies_enabled   = false
+database_max_allocated_storage = 0
+
+oauth_callback_urls = [
+  "http://localhost:3000/oauth/callback"
+]
+
+oauth_logout_urls = [
+  "http://localhost:3000/"
+]
+
+callback_clients = {
+  client-local = {
+    url = "http://host.docker.internal:8080/jobs/completed"
+  }
+}

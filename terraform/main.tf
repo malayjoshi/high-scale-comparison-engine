@@ -15,6 +15,29 @@ variable "aws_region" {
   default     = "eu-west-1"
 }
 
+variable "s3_use_path_style" {
+  description = "Use path-style S3 requests for LocalStack compatibility"
+  type        = bool
+  default     = false
+}
+
+variable "autoscaling_policies_enabled" {
+  description = "Enable worker scaling policies; LocalStack records these policies as disabled"
+  type        = bool
+  default     = true
+}
+
+variable "database_max_allocated_storage" {
+  description = "Maximum RDS autoscaled storage in GiB; use zero where storage autoscaling is not emulated"
+  type        = number
+  default     = 100
+
+  validation {
+    condition     = var.database_max_allocated_storage == 0 || var.database_max_allocated_storage >= 20
+    error_message = "database_max_allocated_storage must be zero or at least 20 GiB."
+  }
+}
+
 variable "worker_ami_id" {
   description = "Explicit worker AMI override; null selects the latest Packer-built worker image"
   type        = string
@@ -57,5 +80,6 @@ locals {
 }
 
 provider "aws" {
-  region = var.aws_region
+  region            = var.aws_region
+  s3_use_path_style = var.s3_use_path_style
 }

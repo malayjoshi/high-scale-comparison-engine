@@ -54,6 +54,7 @@ class ComparisonServiceTest(unittest.TestCase):
             self.assertEqual(folder["files"]["common"], ["common.random"])
             self.assertEqual(folder["files"]["added"], ["added.random"])
             self.assertEqual(folder["files"]["deleted"], ["deleted.random"])
+            self.assertFalse(comparison["identical"])
             self.assertEqual(comparison["columns"]["matching"], ["id", "name", "amount"])
             self.assertEqual(comparison["columns"]["added"], ["added_column"])
             self.assertEqual(comparison["columns"]["deleted"], ["deleted_column"])
@@ -73,6 +74,19 @@ class ComparisonServiceTest(unittest.TestCase):
 
             result_path = service.save(job, result)
             self.assertEqual(json.loads(result_path.read_text()), result)
+
+    def test_skips_csv_comparison_for_identical_files(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "source.random"
+            destination = root / "destination.random"
+            content = b"not,csv\n" + b"x" * (1024 * 1024)
+            source.write_bytes(content)
+            destination.write_bytes(content)
+
+            result = ComparisonService._compare_file(source, destination)
+
+            self.assertEqual(result, {"filename": "source.random", "identical": True})
 
     def test_rejects_folder_traversal(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

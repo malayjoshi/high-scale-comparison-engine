@@ -57,12 +57,13 @@ resource "aws_db_instance" "comparison_engine" {
   identifier = "comparison-engine-postgres"
 
   engine         = "postgres"
+  engine_version = "17"
   instance_class = "db.t4g.micro"
   db_name        = "comparison_engine"
   username       = "comparison_admin"
 
   allocated_storage     = 20
-  max_allocated_storage = 100
+  max_allocated_storage = var.database_max_allocated_storage
   storage_type          = "gp3"
   storage_encrypted     = true
 

@@ -119,14 +119,64 @@ resource "aws_api_gateway_method_response" "accepted" {
   }
 }
 
-resource "aws_api_gateway_integration_response" "accepted" {
+resource "aws_api_gateway_method_response" "bad_gateway_request" {
   rest_api_id = aws_api_gateway_rest_api.comparison_engine.id
   resource_id = aws_api_gateway_resource.jobs.id
   http_method = aws_api_gateway_method.enqueue_job.http_method
-  status_code = aws_api_gateway_method_response.accepted.status_code
+  status_code = "400"
+
+  response_models = {
+    "application/json" = "Empty"
+  }
+}
+
+resource "aws_api_gateway_method_response" "enqueue_failed" {
+  rest_api_id = aws_api_gateway_rest_api.comparison_engine.id
+  resource_id = aws_api_gateway_resource.jobs.id
+  http_method = aws_api_gateway_method.enqueue_job.http_method
+  status_code = "500"
+
+  response_models = {
+    "application/json" = "Empty"
+  }
+}
+
+resource "aws_api_gateway_integration_response" "accepted" {
+  rest_api_id       = aws_api_gateway_rest_api.comparison_engine.id
+  resource_id       = aws_api_gateway_resource.jobs.id
+  http_method       = aws_api_gateway_method.enqueue_job.http_method
+  status_code       = aws_api_gateway_method_response.accepted.status_code
+  selection_pattern = "2\\d{2}"
 
   response_templates = {
     "application/json" = jsonencode({ status = "queued" })
+  }
+
+  depends_on = [aws_api_gateway_integration.sqs]
+}
+
+resource "aws_api_gateway_integration_response" "bad_gateway_request" {
+  rest_api_id       = aws_api_gateway_rest_api.comparison_engine.id
+  resource_id       = aws_api_gateway_resource.jobs.id
+  http_method       = aws_api_gateway_method.enqueue_job.http_method
+  status_code       = aws_api_gateway_method_response.bad_gateway_request.status_code
+  selection_pattern = "4\\d{2}"
+
+  response_templates = {
+    "application/json" = jsonencode({ status = "rejected" })
+  }
+
+  depends_on = [aws_api_gateway_integration.sqs]
+}
+
+resource "aws_api_gateway_integration_response" "enqueue_failed" {
+  rest_api_id = aws_api_gateway_rest_api.comparison_engine.id
+  resource_id = aws_api_gateway_resource.jobs.id
+  http_method = aws_api_gateway_method.enqueue_job.http_method
+  status_code = aws_api_gateway_method_response.enqueue_failed.status_code
+
+  response_templates = {
+    "application/json" = jsonencode({ status = "failed" })
   }
 
   depends_on = [aws_api_gateway_integration.sqs]
@@ -146,11 +196,18 @@ resource "aws_api_gateway_deployment" "comparison_engine" {
       aws_api_gateway_request_validator.comparison_job.id,
       aws_api_gateway_authorizer.comparison_engine.id,
       aws_api_gateway_integration.sqs.id,
-      aws_api_gateway_integration.sqs.request_templates
+      aws_api_gateway_integration.sqs.request_templates,
+      aws_api_gateway_integration_response.accepted.id,
+      aws_api_gateway_integration_response.bad_gateway_request.id,
+      aws_api_gateway_integration_response.enqueue_failed.id
     ]))
   }
 
-  depends_on = [aws_api_gateway_integration.sqs]
+  depends_on = [
+    aws_api_gateway_integration_response.accepted,
+    aws_api_gateway_integration_response.bad_gateway_request,
+    aws_api_gateway_integration_response.enqueue_failed
+  ]
 
   lifecycle {
     create_before_destroy = true

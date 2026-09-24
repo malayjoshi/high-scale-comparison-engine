@@ -12,6 +12,9 @@ from typing import Any
 from .request_model import ComparisonJob, FolderPair
 
 
+_COMPARE_CHUNK_SIZE = 1024 * 1024
+
+
 class ComparisonService:
     def __init__(self, data_root: Path, result_root: Path, max_workers: int) -> None:
         self.data_root = data_root.resolve()
@@ -89,6 +92,9 @@ class ComparisonService:
 
     @staticmethod
     def _compare_file(source: Path, destination: Path) -> dict[str, Any]:
+        if _files_are_identical(source, destination):
+            return {"filename": source.name, "identical": True}
+
         source_columns, source_rows = _read_rows(source)
         destination_columns, destination_rows = _read_rows(destination)
         primary_key = source_columns[0]
@@ -124,6 +130,7 @@ class ComparisonService:
 
         return {
             "filename": source.name,
+            "identical": False,
             "primary_key_column": primary_key,
             "columns": {
                 "matching": matching_columns,
@@ -137,6 +144,20 @@ class ComparisonService:
                 "cell_mismatches": mismatches,
             },
         }
+
+
+def _files_are_identical(source: Path, destination: Path) -> bool:
+    if source.stat().st_size != destination.stat().st_size:
+        return False
+
+    with source.open("rb") as source_handle, destination.open("rb") as destination_handle:
+        while True:
+            source_chunk = source_handle.read(_COMPARE_CHUNK_SIZE)
+            destination_chunk = destination_handle.read(_COMPARE_CHUNK_SIZE)
+            if source_chunk != destination_chunk:
+                return False
+            if not source_chunk:
+                return True
 
 
 def _read_rows(path: Path) -> tuple[list[str], dict[str, dict[str, str]]]:
