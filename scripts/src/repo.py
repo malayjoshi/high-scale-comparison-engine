@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
-from datetime import datetime
 from typing import Any
 
 import psycopg
@@ -50,6 +49,7 @@ class JobRepository:
                 CREATE TABLE IF NOT EXISTS comparison_jobs (
                     job_id UUID PRIMARY KEY,
                     request_timestamp TIMESTAMPTZ NOT NULL,
+                    expected_pair_count INTEGER NOT NULL CHECK (expected_pair_count > 0),
                     timestamp_start TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                     timestamp_end TIMESTAMPTZ,
                     user_id TEXT NOT NULL,
@@ -68,17 +68,40 @@ class JobRepository:
                 "ALTER TABLE comparison_jobs ADD COLUMN IF NOT EXISTS callback_id TEXT"
             )
             connection.execute(
+                "ALTER TABLE comparison_jobs ADD COLUMN IF NOT EXISTS expected_pair_count INTEGER"
+            )
+            connection.execute(
                 """
                 CREATE TABLE IF NOT EXISTS comparison_results (
                     job_id UUID NOT NULL REFERENCES comparison_jobs(job_id) ON DELETE CASCADE,
                     source_folder TEXT NOT NULL,
                     destination_folder TEXT NOT NULL,
-                    comparison_completed_at TIMESTAMPTZ NOT NULL,
-                    s3_location TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'started'
+                        CHECK (status IN ('started', 'completed', 'failed')),
+                    timestamp_start TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    comparison_completed_at TIMESTAMPTZ,
+                    heartbeat_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    worker_id TEXT NOT NULL,
+                    attempt_count INTEGER NOT NULL DEFAULT 1,
+                    result_path TEXT,
+                    s3_location TEXT,
+                    error TEXT,
                     PRIMARY KEY (job_id, source_folder, destination_folder)
                 )
                 """
             )
+            for statement in (
+                "ALTER TABLE comparison_results ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'completed'",
+                "ALTER TABLE comparison_results ADD COLUMN IF NOT EXISTS timestamp_start TIMESTAMPTZ NOT NULL DEFAULT NOW()",
+                "ALTER TABLE comparison_results ADD COLUMN IF NOT EXISTS heartbeat_at TIMESTAMPTZ NOT NULL DEFAULT NOW()",
+                "ALTER TABLE comparison_results ADD COLUMN IF NOT EXISTS worker_id TEXT NOT NULL DEFAULT ''",
+                "ALTER TABLE comparison_results ADD COLUMN IF NOT EXISTS attempt_count INTEGER NOT NULL DEFAULT 1",
+                "ALTER TABLE comparison_results ADD COLUMN IF NOT EXISTS result_path TEXT",
+                "ALTER TABLE comparison_results ADD COLUMN IF NOT EXISTS error TEXT",
+                "ALTER TABLE comparison_results ALTER COLUMN comparison_completed_at DROP NOT NULL",
+                "ALTER TABLE comparison_results ALTER COLUMN s3_location DROP NOT NULL",
+            ):
+                connection.execute(statement)
             connection.execute(
                 """
                 CREATE TABLE IF NOT EXISTS comparison_outbox (
@@ -107,40 +130,80 @@ class JobRepository:
 
     def claim(self, job: ComparisonJob) -> str:
         with self._connect() as connection:
-            inserted = connection.execute(
+            connection.execute(
                 """
                 INSERT INTO comparison_jobs (
-                    job_id, request_timestamp, user_id, callback_id, worker_id
-                ) VALUES (%s, %s, %s, %s, %s)
+                    job_id, request_timestamp, expected_pair_count, user_id, callback_id, worker_id
+                ) VALUES (%s, %s, %s, %s, %s, %s)
                 ON CONFLICT DO NOTHING
-                RETURNING job_id
                 """,
                 (
                     job.job_id,
                     job.requested_at,
+                    job.expected_pair_count,
                     job.user_id,
                     job.callback_id,
                     self.worker_id,
                 ),
-            ).fetchone()
-            if inserted:
-                return "claimed"
+            )
 
-            existing = connection.execute(
+            parent = connection.execute(
                 """
-                SELECT status, user_id, callback_id,
-                       heartbeat_at < NOW() - (%s * INTERVAL '1 second') AS stale
+                SELECT status, user_id, callback_id, expected_pair_count
                 FROM comparison_jobs
                 WHERE job_id = %s
                 FOR UPDATE
                 """,
-                (self.stale_after_seconds, job.job_id),
+                (job.job_id,),
             ).fetchone()
-            if existing is None:
+            if parent is None:
                 raise RuntimeError(f"job disappeared while claiming: {job.job_id}")
-            status, user_id, callback_id, stale = existing
+            parent_status, user_id, callback_id, expected_pair_count = parent
             if user_id != job.user_id or callback_id != job.callback_id:
                 raise ValueError(f"job {job.job_id} has conflicting ownership or callback")
+            if expected_pair_count != job.expected_pair_count:
+                raise ValueError(f"job {job.job_id} has conflicting total_expected_pairs")
+
+            existing = connection.execute(
+                """
+                SELECT status,
+                       heartbeat_at < NOW() - (%s * INTERVAL '1 second') AS stale
+                FROM comparison_results
+                WHERE job_id = %s AND source_folder = %s AND destination_folder = %s
+                FOR UPDATE
+                """,
+                (
+                    self.stale_after_seconds,
+                    job.job_id,
+                    job.pair.source_folder,
+                    job.pair.destination_folder,
+                ),
+            ).fetchone()
+            if existing is None:
+                if parent_status == "completed":
+                    raise ValueError(f"job {job.job_id} is already completed")
+                pair_count = connection.execute(
+                    "SELECT COUNT(*) FROM comparison_results WHERE job_id = %s",
+                    (job.job_id,),
+                ).fetchone()[0]
+                if pair_count >= job.expected_pair_count:
+                    raise ValueError(f"job {job.job_id} already has all expected pairs")
+                connection.execute(
+                    """
+                    INSERT INTO comparison_results (
+                        job_id, source_folder, destination_folder, status, worker_id
+                    ) VALUES (%s, %s, %s, 'started', %s)
+                    """,
+                    (
+                        job.job_id,
+                        job.pair.source_folder,
+                        job.pair.destination_folder,
+                        self.worker_id,
+                    ),
+                )
+                return "claimed"
+
+            status, stale = existing
             if status == "completed":
                 return "completed"
             if status == "started" and not stale:
@@ -148,48 +211,113 @@ class JobRepository:
 
             connection.execute(
                 """
-                UPDATE comparison_jobs
-                SET status = 'started', timestamp_start = NOW(), timestamp_end = NULL,
+                UPDATE comparison_results
+                SET status = 'started', timestamp_start = NOW(), comparison_completed_at = NULL,
                     heartbeat_at = NOW(), worker_id = %s,
-                    attempt_count = attempt_count + 1, result_path = NULL, error = NULL
-                WHERE job_id = %s
+                    attempt_count = attempt_count + 1, result_path = NULL,
+                    s3_location = NULL, error = NULL
+                WHERE job_id = %s AND source_folder = %s AND destination_folder = %s
                 """,
-                (self.worker_id, job.job_id),
+                (
+                    self.worker_id,
+                    job.job_id,
+                    job.pair.source_folder,
+                    job.pair.destination_folder,
+                ),
             )
             return "claimed"
 
-    def heartbeat(self, job_id: str) -> None:
+    def heartbeat(self, job: ComparisonJob) -> None:
         with self._connect() as connection:
             cursor = connection.execute(
                 """
-                UPDATE comparison_jobs SET heartbeat_at = NOW()
-                WHERE job_id = %s AND worker_id = %s AND status = 'started'
+                UPDATE comparison_results SET heartbeat_at = NOW()
+                WHERE job_id = %s AND source_folder = %s AND destination_folder = %s
+                  AND worker_id = %s AND status = 'started'
                 """,
-                (job_id, self.worker_id),
+                (
+                    job.job_id,
+                    job.pair.source_folder,
+                    job.pair.destination_folder,
+                    self.worker_id,
+                ),
             )
             if cursor.rowcount != 1:
-                raise RuntimeError(f"lost database claim for job {job_id}")
+                raise RuntimeError(f"lost database claim for job {job.job_id}")
 
     def complete(
         self,
         job: ComparisonJob,
         result_path: str,
-        result_locations: list[str],
-    ) -> str:
+        result_location: str,
+    ) -> str | None:
         event_id = str(uuid.uuid4())
         with self._connect() as connection:
-            completed = connection.execute(
+            parent = connection.execute(
+                """
+                SELECT status, expected_pair_count
+                FROM comparison_jobs
+                WHERE job_id = %s
+                FOR UPDATE
+                """,
+                (job.job_id,),
+            ).fetchone()
+            if parent is None:
+                raise RuntimeError(f"job disappeared while completing: {job.job_id}")
+
+            completed_pair = connection.execute(
+                """
+                UPDATE comparison_results
+                SET status = 'completed', comparison_completed_at = NOW(), heartbeat_at = NOW(),
+                    result_path = %s, s3_location = %s, error = NULL
+                WHERE job_id = %s AND source_folder = %s AND destination_folder = %s
+                  AND worker_id = %s AND status = 'started'
+                RETURNING comparison_completed_at
+                """,
+                (
+                    result_path,
+                    result_location,
+                    job.job_id,
+                    job.pair.source_folder,
+                    job.pair.destination_folder,
+                    self.worker_id,
+                ),
+            ).fetchone()
+            if completed_pair is None:
+                raise RuntimeError(f"lost database claim for job {job.job_id}")
+
+            completed_count = connection.execute(
+                """
+                SELECT COUNT(*) FROM comparison_results
+                WHERE job_id = %s AND status = 'completed'
+                """,
+                (job.job_id,),
+            ).fetchone()[0]
+            if completed_count != parent[1] or parent[0] == "completed":
+                return None
+
+            completed_job = connection.execute(
                 """
                 UPDATE comparison_jobs
-                SET status = 'completed', timestamp_end = NOW(), heartbeat_at = NOW(),
-                    result_path = %s, error = NULL
-                WHERE job_id = %s AND worker_id = %s AND status = 'started'
+                SET status = 'completed', timestamp_end = NOW()
+                WHERE job_id = %s AND status = 'started'
                 RETURNING timestamp_end
                 """,
-                (result_path, job.job_id, self.worker_id),
+                (job.job_id,),
             ).fetchone()
-            if completed is None:
-                raise RuntimeError(f"lost database claim for job {job.job_id}")
+            if completed_job is None:
+                raise RuntimeError(f"failed to complete job {job.job_id}")
+            result_locations = [
+                row[0]
+                for row in connection.execute(
+                    """
+                    SELECT s3_location FROM comparison_results
+                    WHERE job_id = %s AND status = 'completed'
+                    ORDER BY source_folder, destination_folder
+                    """,
+                    (job.job_id,),
+                ).fetchall()
+            ]
 
             payload = {
                 "event_id": event_id,
@@ -197,7 +325,7 @@ class JobRepository:
                 "user_id": job.user_id,
                 "callback_id": job.callback_id,
                 "status": "completed",
-                "completed_at": completed[0].isoformat(),
+                "completed_at": completed_job[0].isoformat(),
                 "result_locations": result_locations,
             }
             inserted_event = connection.execute(
@@ -227,46 +355,26 @@ class JobRepository:
                 raise RuntimeError(f"failed to create outbox event for job {job.job_id}")
         return str(inserted_event[0])
 
-    def record_result(
-        self,
-        job_id: str,
-        source_folder: str,
-        destination_folder: str,
-        completed_at: datetime,
-        s3_location: str,
-    ) -> None:
+    def fail(self, job: ComparisonJob, error: str) -> None:
         with self._connect() as connection:
             cursor = connection.execute(
                 """
-                INSERT INTO comparison_results (
-                    job_id, source_folder, destination_folder,
-                    comparison_completed_at, s3_location
-                )
-                SELECT %s, %s, %s, %s, %s
-                WHERE EXISTS (
-                    SELECT 1 FROM comparison_jobs
-                    WHERE job_id = %s AND worker_id = %s AND status = 'started'
-                )
-                ON CONFLICT (job_id, source_folder, destination_folder)
-                DO UPDATE SET
-                    comparison_completed_at = EXCLUDED.comparison_completed_at,
-                    s3_location = EXCLUDED.s3_location
+                UPDATE comparison_results
+                SET status = 'failed', comparison_completed_at = NOW(), heartbeat_at = NOW(),
+                    error = %s
+                WHERE job_id = %s AND source_folder = %s AND destination_folder = %s
+                  AND worker_id = %s AND status = 'started'
                 """,
                 (
-                    job_id,
-                    source_folder,
-                    destination_folder,
-                    completed_at,
-                    s3_location,
-                    job_id,
+                    error[:4000],
+                    job.job_id,
+                    job.pair.source_folder,
+                    job.pair.destination_folder,
                     self.worker_id,
                 ),
             )
             if cursor.rowcount != 1:
-                raise RuntimeError(f"lost database claim for job {job_id}")
-
-    def fail(self, job_id: str, error: str) -> None:
-        self._finish(job_id, "failed", error=error[:4000])
+                raise RuntimeError(f"lost database claim for job {job.job_id}")
 
     def claim_outbox(self, limit: int = 10) -> list[OutboxEvent]:
         with self._connect() as connection:
@@ -321,24 +429,3 @@ class JobRepository:
             )
             if cursor.rowcount != 1:
                 raise RuntimeError(f"lost outbox claim for event {event_id}")
-
-    def _finish(
-        self,
-        job_id: str,
-        status: str,
-        *,
-        result_path: str | None = None,
-        error: str | None = None,
-    ) -> None:
-        with self._connect() as connection:
-            cursor = connection.execute(
-                """
-                UPDATE comparison_jobs
-                SET status = %s, timestamp_end = NOW(), heartbeat_at = NOW(),
-                    result_path = %s, error = %s
-                WHERE job_id = %s AND worker_id = %s AND status = 'started'
-                """,
-                (status, result_path, error, job_id, self.worker_id),
-            )
-            if cursor.rowcount != 1:
-                raise RuntimeError(f"lost database claim for job {job_id}")

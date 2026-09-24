@@ -18,19 +18,17 @@ import (
 	"time"
 )
 
-type folderPair struct {
-	SourceFolder      string `json:"source_folder"`
-	DestinationFolder string `json:"destination_folder"`
-}
-
-type comparisonJob struct {
-	JobID      string       `json:"job_id"`
-	Folder     []folderPair `json:"folder"`
-	Timestamp  time.Time    `json:"timestamp"`
-	CallbackID string       `json:"callback_id"`
+type comparisonRequest struct {
+	JobID              string    `json:"job_id"`
+	SourceFolder       string    `json:"source_folder"`
+	DestinationFolder  string    `json:"destination_folder"`
+	TotalExpectedPairs int       `json:"total_expected_pairs"`
+	Timestamp          time.Time `json:"timestamp"`
+	CallbackID         string    `json:"callback_id"`
 }
 
 var callbackIDPattern = regexp.MustCompile(`^[A-Za-z0-9._-]{1,100}$`)
+var jobIDPattern = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$`)
 
 type pairFlags []string
 
@@ -44,6 +42,7 @@ func main() {
 	var pairs pairFlags
 	apiURL := flag.String("api-url", os.Getenv("COMPARISON_ENGINE_API_URL"), "API Gateway /jobs URL")
 	callbackID := flag.String("callback-id", os.Getenv("COMPARISON_ENGINE_CALLBACK_ID"), "registered callback identifier")
+	jobID := flag.String("job-id", "", "existing job UUID when retrying a partially submitted job")
 	dataRoot := flag.String("data-root", envOrDefault("COMPARISON_ENGINE_DATA_ROOT", "dummy_data"), "local dummy-data directory")
 	timeout := flag.Duration("timeout", 30*time.Second, "request timeout")
 	flag.Var(&pairs, "pair", "folder pair as source:destination; repeat for multiple pairs")
@@ -57,51 +56,78 @@ func main() {
 		log.Fatal("COMPARISON_ENGINE_TOKEN is required")
 	}
 
-	job, err := buildJob(*dataRoot, pairs, *callbackID, time.Now().UTC())
+	if *jobID == "" {
+		var err error
+		*jobID, err = newUUID()
+		if err != nil {
+			log.Fatalf("generate job ID: %v", err)
+		}
+	} else if !jobIDPattern.MatchString(*jobID) {
+		log.Fatal("job ID must be a valid UUID")
+	}
+
+	requests, err := buildRequests(*dataRoot, pairs, *callbackID, *jobID, time.Now().UTC())
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), *timeout)
 	defer cancel()
-	if err := postJob(ctx, http.DefaultClient, *apiURL, token, job); err != nil {
-		log.Fatal(err)
+	fmt.Println(*jobID)
+	for index, request := range requests {
+		if err := postJob(ctx, http.DefaultClient, *apiURL, token, request); err != nil {
+			log.Fatalf(
+				"job %s: submit pair %d/%d (%s:%s): %v",
+				*jobID,
+				index+1,
+				len(requests),
+				request.SourceFolder,
+				request.DestinationFolder,
+				err,
+			)
+		}
 	}
-
-	fmt.Println(job.JobID)
 }
 
-func buildJob(dataRoot string, rawPairs []string, callbackID string, timestamp time.Time) (comparisonJob, error) {
+func buildRequests(dataRoot string, rawPairs []string, callbackID, jobID string, timestamp time.Time) ([]comparisonRequest, error) {
 	if len(rawPairs) == 0 {
-		return comparisonJob{}, errors.New("at least one -pair source:destination is required")
+		return nil, errors.New("at least one -pair source:destination is required")
+	}
+	if len(rawPairs) > 100 {
+		return nil, errors.New("at most 100 folder pairs are allowed per job")
 	}
 	if !callbackIDPattern.MatchString(callbackID) {
-		return comparisonJob{}, errors.New("callback ID must contain 1-100 letters, numbers, dots, underscores, or hyphens")
+		return nil, errors.New("callback ID must contain 1-100 letters, numbers, dots, underscores, or hyphens")
 	}
 
-	pairs := make([]folderPair, 0, len(rawPairs))
+	requests := make([]comparisonRequest, 0, len(rawPairs))
+	seen := make(map[string]struct{}, len(rawPairs))
 	for _, raw := range rawPairs {
 		source, destination, found := strings.Cut(raw, ":")
 		if !found || source == "" || destination == "" {
-			return comparisonJob{}, fmt.Errorf("invalid pair %q: expected source:destination", raw)
+			return nil, fmt.Errorf("invalid pair %q: expected source:destination", raw)
 		}
 		if err := validateFolder(dataRoot, source); err != nil {
-			return comparisonJob{}, fmt.Errorf("source folder %q: %w", source, err)
+			return nil, fmt.Errorf("source folder %q: %w", source, err)
 		}
 		if err := validateFolder(dataRoot, destination); err != nil {
-			return comparisonJob{}, fmt.Errorf("destination folder %q: %w", destination, err)
+			return nil, fmt.Errorf("destination folder %q: %w", destination, err)
 		}
-		pairs = append(pairs, folderPair{SourceFolder: source, DestinationFolder: destination})
+		pairKey := source + "\x00" + destination
+		if _, exists := seen[pairKey]; exists {
+			return nil, fmt.Errorf("duplicate pair %q", raw)
+		}
+		seen[pairKey] = struct{}{}
+		requests = append(requests, comparisonRequest{
+			JobID:              jobID,
+			SourceFolder:       source,
+			DestinationFolder:  destination,
+			TotalExpectedPairs: len(rawPairs),
+			Timestamp:          timestamp.UTC(),
+			CallbackID:         callbackID,
+		})
 	}
-
-	jobID, err := newUUID()
-	if err != nil {
-		return comparisonJob{}, fmt.Errorf("generate job ID: %w", err)
-	}
-	return comparisonJob{
-		JobID: jobID, Folder: pairs, Timestamp: timestamp.UTC(), CallbackID: callbackID,
-	}, nil
-
+	return requests, nil
 }
 
 func validateFolder(dataRoot, name string) error {
@@ -128,8 +154,8 @@ func newUUID() (string, error) {
 	return fmt.Sprintf("%08x-%04x-%04x-%04x-%012x", id[0:4], id[4:6], id[6:8], id[8:10], id[10:16]), nil
 }
 
-func postJob(ctx context.Context, client *http.Client, apiURL, token string, job comparisonJob) error {
-	body, err := json.Marshal(job)
+func postJob(ctx context.Context, client *http.Client, apiURL, token string, request comparisonRequest) error {
+	body, err := json.Marshal(request)
 	if err != nil {
 		return fmt.Errorf("encode job: %w", err)
 	}

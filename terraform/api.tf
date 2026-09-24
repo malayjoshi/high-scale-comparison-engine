@@ -23,7 +23,14 @@ resource "aws_api_gateway_model" "comparison_job" {
     "$schema"            = "http://json-schema.org/draft-04/schema#"
     type                 = "object"
     additionalProperties = false
-    required             = ["job_id", "folder", "timestamp", "callback_id"]
+    required = [
+      "job_id",
+      "source_folder",
+      "destination_folder",
+      "total_expected_pairs",
+      "timestamp",
+      "callback_id"
+    ]
     properties = {
       job_id = {
         type    = "string"
@@ -40,25 +47,18 @@ resource "aws_api_gateway_model" "comparison_job" {
         minLength = 1
         maxLength = 100
       }
-      folder = {
-        type     = "array"
-        minItems = 1
-        maxItems = 100
-        items = {
-          type                 = "object"
-          additionalProperties = false
-          required             = ["source_folder", "destination_folder"]
-          properties = {
-            source_folder = {
-              type    = "string"
-              pattern = "^[A-Za-z0-9._-]+$"
-            }
-            destination_folder = {
-              type    = "string"
-              pattern = "^[A-Za-z0-9._-]+$"
-            }
-          }
-        }
+      source_folder = {
+        type    = "string"
+        pattern = "^[A-Za-z0-9._-]+$"
+      }
+      destination_folder = {
+        type    = "string"
+        pattern = "^[A-Za-z0-9._-]+$"
+      }
+      total_expected_pairs = {
+        type    = "integer"
+        minimum = 1
+        maximum = 100
       }
     }
   })
@@ -103,7 +103,7 @@ resource "aws_api_gateway_integration" "sqs" {
 
   request_templates = {
     "application/json" = <<-VTL
-      #set($message = "{\"job_id\":\"$util.escapeJavaScript($input.path('$.job_id'))\",\"folder\":$input.json('$.folder'),\"timestamp\":\"$util.escapeJavaScript($input.path('$.timestamp'))\",\"callback_id\":\"$util.escapeJavaScript($input.path('$.callback_id'))\",\"user_id\":\"$util.escapeJavaScript($context.authorizer.claims.sub)\"}")Action=SendMessage&MessageBody=$util.urlEncode($message)
+      #set($message = "{\"job_id\":\"$util.escapeJavaScript($input.path('$.job_id'))\",\"source_folder\":\"$util.escapeJavaScript($input.path('$.source_folder'))\",\"destination_folder\":\"$util.escapeJavaScript($input.path('$.destination_folder'))\",\"total_expected_pairs\":$input.path('$.total_expected_pairs'),\"timestamp\":\"$util.escapeJavaScript($input.path('$.timestamp'))\",\"callback_id\":\"$util.escapeJavaScript($input.path('$.callback_id'))\",\"user_id\":\"$util.escapeJavaScript($context.authorizer.claims.sub)\"}")Action=SendMessage&MessageBody=$util.urlEncode($message)
     VTL
   }
 }

@@ -20,7 +20,8 @@ class ResultStoreTest(unittest.TestCase):
         store = S3ResultStore(s3, "results-bucket")
         job = ComparisonJob(
             "30a3e7d2-f886-47b6-b9d6-11c54d37fc4d",
-            (FolderPair("folder_a", "folder_b"),),
+            FolderPair("folder_a", "folder_b"),
+            1,
             datetime(2026, 9, 23, 12, 0, tzinfo=timezone.utc),
             "microsoft-user-id",
             "client-production",

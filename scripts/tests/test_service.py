@@ -4,7 +4,7 @@ import unittest
 from datetime import datetime, timezone
 from pathlib import Path
 
-from scripts.src.request_model import ComparisonJob
+from scripts.src.request_model import ComparisonJob, FolderPair
 from scripts.src.service import ComparisonService
 
 
@@ -37,9 +37,9 @@ class ComparisonServiceTest(unittest.TestCase):
                 json.dumps(
                     {
                         "job_id": "30a3e7d2-f886-47b6-b9d6-11c54d37fc4d",
-                        "folder": [
-                            {"source_folder": "folder_a", "destination_folder": "folder_b"}
-                        ],
+                        "source_folder": "folder_a",
+                        "destination_folder": "folder_b",
+                        "total_expected_pairs": 1,
                         "timestamp": "2026-09-23T12:30:00Z",
                         "user_id": "microsoft-user-id",
                         "callback_id": "client-production",
@@ -48,7 +48,7 @@ class ComparisonServiceTest(unittest.TestCase):
             )
             service = ComparisonService(root, results, max_workers=4)
             result = service.compare(job)
-            folder = result["folder_comparisons"][0]
+            folder = result["folder_comparison"]
             comparison = folder["file_comparisons"][0]
 
             self.assertEqual(folder["files"]["common"], ["common.random"])
@@ -71,7 +71,7 @@ class ComparisonServiceTest(unittest.TestCase):
                 ],
             )
 
-            result_path = service.save(job.job_id, result)
+            result_path = service.save(job, result)
             self.assertEqual(json.loads(result_path.read_text()), result)
 
     def test_rejects_folder_traversal(self) -> None:
@@ -80,7 +80,8 @@ class ComparisonServiceTest(unittest.TestCase):
             service = ComparisonService(root, root / "results", max_workers=1)
             job = ComparisonJob(
                 "30a3e7d2-f886-47b6-b9d6-11c54d37fc4d",
-                (),
+                FolderPair("../outside", "folder_b"),
+                1,
                 datetime.now(timezone.utc),
                 "user",
                 "callback",

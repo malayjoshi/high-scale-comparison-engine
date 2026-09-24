@@ -65,7 +65,7 @@ class VisibilityHeartbeat:
         visibility_timeout: int,
         interval: int,
         repository: JobRepository,
-        job_id: str,
+        job: ComparisonJob,
     ) -> None:
         self.sqs = sqs
         self.queue_url = queue_url
@@ -73,10 +73,14 @@ class VisibilityHeartbeat:
         self.visibility_timeout = visibility_timeout
         self.interval = interval
         self.repository = repository
-        self.job_id = job_id
+        self.job = job
         self.stop = threading.Event()
         self.error: Exception | None = None
-        self.thread = threading.Thread(target=self._run, name=f"visibility-{job_id}", daemon=True)
+        self.thread = threading.Thread(
+            target=self._run,
+            name=f"visibility-{job.job_id}",
+            daemon=True,
+        )
 
     def __enter__(self) -> "VisibilityHeartbeat":
         self.thread.start()
@@ -98,7 +102,7 @@ class VisibilityHeartbeat:
                     ReceiptHandle=self.receipt_handle,
                     VisibilityTimeout=self.visibility_timeout,
                 )
-                self.repository.heartbeat(self.job_id)
+                self.repository.heartbeat(self.job)
             except Exception as exc:  # reported to the processing thread
                 self.error = exc
                 self.stop.set()
@@ -186,39 +190,26 @@ class Worker:
                 self.settings.visibility_timeout,
                 self.settings.heartbeat_interval,
                 self.repository,
-                job.job_id,
+                job,
             )
             with heartbeat:
-                folder_results = []
-                result_locations = []
-                for pair in job.folders:
-                    folder_result = self.comparison.compare_folders(pair)
-                    completed_at = datetime.now(timezone.utc)
-                    s3_location = self.result_store.put_folder_result(
-                        job,
-                        folder_result,
-                        completed_at,
-                    )
-                    self.repository.record_result(
-                        job.job_id,
-                        pair.source_folder,
-                        pair.destination_folder,
-                        completed_at,
-                        s3_location,
-                    )
-                    folder_results.append(folder_result)
-                    result_locations.append(s3_location)
-                    heartbeat.raise_if_failed()
-
-                result = self.comparison.build_result(job, folder_results)
-                result_path = self.comparison.save(job.job_id, result)
+                folder_result = self.comparison.compare_folders(job.pair)
+                completed_at = datetime.now(timezone.utc)
+                s3_location = self.result_store.put_folder_result(
+                    job,
+                    folder_result,
+                    completed_at,
+                )
                 heartbeat.raise_if_failed()
-                self.repository.complete(job, str(result_path), result_locations)
+                result = self.comparison.build_result(job, folder_result)
+                result_path = self.comparison.save(job, result)
+                heartbeat.raise_if_failed()
+                self.repository.complete(job, str(result_path), s3_location)
         except Exception as exc:
             LOG.exception("comparison job failed")
             if claimed and job is not None:
                 try:
-                    self.repository.fail(job.job_id, str(exc))
+                    self.repository.fail(job, str(exc))
                 except Exception:
                     LOG.exception("failed to mark job as failed")
             self._release(receipt_handle, 0)

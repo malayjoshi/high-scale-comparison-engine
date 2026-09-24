@@ -19,28 +19,29 @@ class ComparisonService:
         self.max_workers = max(1, max_workers)
 
     def compare(self, job: ComparisonJob) -> dict[str, Any]:
-        return self.build_result(job, [self.compare_folders(pair) for pair in job.folders])
+        return self.build_result(job, self.compare_folders(job.pair))
 
     @staticmethod
     def build_result(
         job: ComparisonJob,
-        folder_comparisons: list[dict[str, Any]],
+        folder_comparison: dict[str, Any],
     ) -> dict[str, Any]:
         return {
             "job_id": job.job_id,
             "user_id": job.user_id,
             "generated_at": datetime.now(timezone.utc).isoformat(),
-            "folder_comparisons": folder_comparisons,
+            "folder_comparison": folder_comparison,
         }
 
-    def save(self, job_id: str, result: dict[str, Any]) -> Path:
+    def save(self, job: ComparisonJob, result: dict[str, Any]) -> Path:
         self.result_root.mkdir(parents=True, exist_ok=True)
-        destination = self.result_root / f"{job_id}.json"
+        result_name = f"{job.job_id}-{job.pair.source_folder}-{job.pair.destination_folder}"
+        destination = self.result_root / f"{result_name}.json"
         with tempfile.NamedTemporaryFile(
             mode="w",
             encoding="utf-8",
             dir=self.result_root,
-            prefix=f".{job_id}-",
+            prefix=f".{result_name}-",
             suffix=".tmp",
             delete=False,
         ) as handle:

@@ -11,7 +11,9 @@ MESSAGE = {
     "Body": json.dumps(
         {
             "job_id": "30a3e7d2-f886-47b6-b9d6-11c54d37fc4d",
-            "folder": [{"source_folder": "folder_a", "destination_folder": "folder_b"}],
+            "source_folder": "folder_a",
+            "destination_folder": "folder_b",
+            "total_expected_pairs": 1,
             "timestamp": "2026-09-23T12:30:00Z",
             "user_id": "microsoft-user-id",
             "callback_id": "client-production",
@@ -37,22 +39,18 @@ class FakeRepository:
         self.claim_result = claim
         self.completed = []
         self.failed = []
-        self.results = []
 
     def claim(self, _job: object) -> str:
         return self.claim_result
 
-    def heartbeat(self, _job_id: str) -> None:
+    def heartbeat(self, _job: object) -> None:
         pass
 
-    def complete(self, job: object, path: str, result_locations: list[str]) -> None:
-        self.completed.append((job.job_id, path, result_locations))
+    def complete(self, job: object, path: str, result_location: str) -> None:
+        self.completed.append((job.job_id, path, result_location))
 
-    def record_result(self, *args: object) -> None:
-        self.results.append(args)
-
-    def fail(self, job_id: str, error: str) -> None:
-        self.failed.append((job_id, error))
+    def fail(self, job: object, error: str) -> None:
+        self.failed.append((job.job_id, error))
 
 
 class FakeComparison:
@@ -68,11 +66,11 @@ class FakeComparison:
             "result": "ok",
         }
 
-    def build_result(self, _job: object, folders: object) -> dict[str, object]:
-        return {"folder_comparisons": folders}
+    def build_result(self, _job: object, folder: object) -> dict[str, object]:
+        return {"folder_comparison": folder}
 
-    def save(self, job_id: str, _result: object) -> Path:
-        return Path(f"/var/tmp/comparison-engine/{job_id}.json")
+    def save(self, job: object, _result: object) -> Path:
+        return Path(f"/var/tmp/comparison-engine/{job.job_id}.json")
 
 
 class FakeResultStore:
@@ -102,7 +100,6 @@ class WorkerTest(unittest.TestCase):
         worker = self.worker()
         worker._handle(MESSAGE)
         self.assertEqual(len(worker.repository.completed), 1)
-        self.assertEqual(len(worker.repository.results), 1)
         self.assertEqual(len(worker.result_store.uploads), 1)
         self.assertEqual(len(worker.sqs.deleted), 1)
         self.assertEqual(worker.sqs.visibility, [])
