@@ -13,26 +13,6 @@ output "comparison_results_bucket" {
   value       = aws_s3_bucket.comparison_results.id
 }
 
-output "glue_comparison_results_table" {
-  description = "Glue Data Catalog table queried by Athena"
-  value       = "${aws_glue_catalog_database.comparison_engine.name}.${aws_glue_catalog_table.comparison_results.name}"
-}
-
-output "athena_analytics_workgroup" {
-  description = "Athena workgroup used for comparison analytics"
-  value       = aws_athena_workgroup.comparison_analytics.name
-}
-
-output "quicksight_comparison_dataset_arn" {
-  description = "QuickSight SPICE dataset ARN when QuickSight is enabled"
-  value       = var.enable_quicksight ? aws_quicksight_data_set.comparison_results[0].arn : null
-}
-
-output "dashboard_embed_url_endpoint" {
-  description = "JWT-protected endpoint that creates registered-reader embed URLs"
-  value       = var.enable_quicksight ? "${aws_api_gateway_stage.production.invoke_url}/dashboard/embed-url" : null
-}
-
 output "worker_ami_id" {
   description = "AMI selected for the comparison worker launch template"
   value       = local.worker_ami_id

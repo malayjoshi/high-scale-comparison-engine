@@ -132,102 +132,6 @@ resource "aws_api_gateway_integration_response" "accepted" {
   depends_on = [aws_api_gateway_integration.sqs]
 }
 
-resource "aws_api_gateway_resource" "dashboard" {
-  count       = var.enable_quicksight ? 1 : 0
-  rest_api_id = aws_api_gateway_rest_api.comparison_engine.id
-  parent_id   = aws_api_gateway_rest_api.comparison_engine.root_resource_id
-  path_part   = "dashboard"
-}
-
-resource "aws_api_gateway_resource" "dashboard_embed_url" {
-  count       = var.enable_quicksight ? 1 : 0
-  rest_api_id = aws_api_gateway_rest_api.comparison_engine.id
-  parent_id   = aws_api_gateway_resource.dashboard[0].id
-  path_part   = "embed-url"
-}
-
-resource "aws_api_gateway_method" "dashboard_embed_url" {
-  count         = var.enable_quicksight ? 1 : 0
-  rest_api_id   = aws_api_gateway_rest_api.comparison_engine.id
-  resource_id   = aws_api_gateway_resource.dashboard_embed_url[0].id
-  http_method   = "GET"
-  authorization = "COGNITO_USER_POOLS"
-  authorizer_id = aws_api_gateway_authorizer.comparison_engine.id
-
-  authorization_scopes = [
-    "${aws_cognito_resource_server.comparison_engine.identifier}/dashboard.read"
-  ]
-}
-
-resource "aws_api_gateway_integration" "dashboard_embed_url" {
-  count                   = var.enable_quicksight ? 1 : 0
-  rest_api_id             = aws_api_gateway_rest_api.comparison_engine.id
-  resource_id             = aws_api_gateway_resource.dashboard_embed_url[0].id
-  http_method             = aws_api_gateway_method.dashboard_embed_url[0].http_method
-  integration_http_method = "POST"
-  type                    = "AWS_PROXY"
-  uri                     = aws_lambda_function.dashboard_embed[0].invoke_arn
-}
-
-resource "aws_lambda_permission" "dashboard_embed_api" {
-  count         = var.enable_quicksight ? 1 : 0
-  statement_id  = "AllowApiGatewayDashboardEmbed"
-  action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.dashboard_embed[0].function_name
-  principal     = "apigateway.amazonaws.com"
-  source_arn    = "${aws_api_gateway_rest_api.comparison_engine.execution_arn}/*/GET/dashboard/embed-url"
-}
-
-resource "aws_api_gateway_method" "dashboard_embed_options" {
-  count         = var.enable_quicksight ? 1 : 0
-  rest_api_id   = aws_api_gateway_rest_api.comparison_engine.id
-  resource_id   = aws_api_gateway_resource.dashboard_embed_url[0].id
-  http_method   = "OPTIONS"
-  authorization = "NONE"
-}
-
-resource "aws_api_gateway_integration" "dashboard_embed_options" {
-  count       = var.enable_quicksight ? 1 : 0
-  rest_api_id = aws_api_gateway_rest_api.comparison_engine.id
-  resource_id = aws_api_gateway_resource.dashboard_embed_url[0].id
-  http_method = aws_api_gateway_method.dashboard_embed_options[0].http_method
-  type        = "MOCK"
-
-  request_templates = {
-    "application/json" = jsonencode({ statusCode = 200 })
-  }
-}
-
-resource "aws_api_gateway_method_response" "dashboard_embed_options" {
-  count       = var.enable_quicksight ? 1 : 0
-  rest_api_id = aws_api_gateway_rest_api.comparison_engine.id
-  resource_id = aws_api_gateway_resource.dashboard_embed_url[0].id
-  http_method = aws_api_gateway_method.dashboard_embed_options[0].http_method
-  status_code = "200"
-
-  response_parameters = {
-    "method.response.header.Access-Control-Allow-Headers" = true
-    "method.response.header.Access-Control-Allow-Methods" = true
-    "method.response.header.Access-Control-Allow-Origin"  = true
-  }
-}
-
-resource "aws_api_gateway_integration_response" "dashboard_embed_options" {
-  count       = var.enable_quicksight ? 1 : 0
-  rest_api_id = aws_api_gateway_rest_api.comparison_engine.id
-  resource_id = aws_api_gateway_resource.dashboard_embed_url[0].id
-  http_method = aws_api_gateway_method.dashboard_embed_options[0].http_method
-  status_code = aws_api_gateway_method_response.dashboard_embed_options[0].status_code
-
-  response_parameters = {
-    "method.response.header.Access-Control-Allow-Headers" = "'Authorization,Content-Type'"
-    "method.response.header.Access-Control-Allow-Methods" = "'GET,OPTIONS'"
-    "method.response.header.Access-Control-Allow-Origin"  = "'${var.quicksight_embed_allowed_domains[0]}'"
-  }
-
-  depends_on = [aws_api_gateway_integration.dashboard_embed_options]
-}
-
 resource "aws_api_gateway_deployment" "comparison_engine" {
   rest_api_id = aws_api_gateway_rest_api.comparison_engine.id
 
@@ -242,22 +146,11 @@ resource "aws_api_gateway_deployment" "comparison_engine" {
       aws_api_gateway_request_validator.comparison_job.id,
       aws_api_gateway_authorizer.comparison_engine.id,
       aws_api_gateway_integration.sqs.id,
-      aws_api_gateway_integration.sqs.request_templates,
-      aws_api_gateway_resource.dashboard[*].id,
-      aws_api_gateway_resource.dashboard_embed_url[*].id,
-      aws_api_gateway_method.dashboard_embed_url[*].id,
-      aws_api_gateway_integration.dashboard_embed_url[*].id,
-      aws_api_gateway_method.dashboard_embed_options[*].id,
-      aws_api_gateway_integration.dashboard_embed_options[*].id,
-      aws_api_gateway_integration_response.dashboard_embed_options[*].id
+      aws_api_gateway_integration.sqs.request_templates
     ]))
   }
 
-  depends_on = [
-    aws_api_gateway_integration.sqs,
-    aws_api_gateway_integration.dashboard_embed_url,
-    aws_api_gateway_integration.dashboard_embed_options
-  ]
+  depends_on = [aws_api_gateway_integration.sqs]
 
   lifecycle {
     create_before_destroy = true
