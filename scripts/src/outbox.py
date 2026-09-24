@@ -1,3 +1,5 @@
+"""Publish committed completion events from PostgreSQL to the callback queue."""
+
 from __future__ import annotations
 
 import json
@@ -12,6 +14,7 @@ LOG = logging.getLogger("comparison-worker.outbox")
 
 
 class OutboxDispatcher:
+    """Poll the transactional outbox and retry failed SQS publications safely."""
     def __init__(
         self,
         repository: JobRepository,

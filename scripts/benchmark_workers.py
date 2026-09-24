@@ -1,3 +1,9 @@
+"""Measure local worker throughput against LocalStack and PostgreSQL.
+
+Each trial uses temporary queues, a bucket, and a database secret. The job
+tables are truncated between trials so worker counts see the same workload.
+"""
+
 from __future__ import annotations
 
 import argparse
@@ -59,6 +65,7 @@ def folder_label(index: int) -> str:
 
 
 class Benchmark:
+    """Create an isolated workload, run worker processes, and clean it up."""
     def __init__(self, args: argparse.Namespace) -> None:
         self.args = args
         self.root = Path(__file__).resolve().parents[1]

@@ -1,3 +1,5 @@
+"""Deliver completed-job events only to callbacks registered in DynamoDB."""
+
 from __future__ import annotations
 
 import json
@@ -16,11 +18,13 @@ LOCAL_HOSTS = {"localhost", "127.0.0.1", "host.docker.internal"}
 
 
 class RejectRedirects(HTTPRedirectHandler):
+    """Keep an approved callback from redirecting Lambda to another host."""
     def redirect_request(self, req: Any, fp: Any, code: int, msg: str, headers: Any, newurl: str) -> None:
         raise HTTPError(req.full_url, code, "callback redirects are disabled", headers, fp)
 
 
 def lambda_handler(event: dict[str, Any], _context: Any) -> dict[str, list[dict[str, str]]]:
+    """Return partial batch failures so SQS retries only unsuccessful callbacks."""
     table = boto3.resource("dynamodb").Table(os.environ["CALLBACK_CLIENTS_TABLE"])
     opener = build_opener(RejectRedirects())
     failures = []
@@ -36,6 +40,7 @@ def lambda_handler(event: dict[str, Any], _context: Any) -> dict[str, list[dict[
 
 
 def deliver_callback(message: dict[str, Any], table: Any, opener: Any) -> None:
+    """Resolve an allow-listed callback ID and POST one completion event."""
     event_id = _required_string(message, "event_id")
     detail = message.get("detail")
     if not isinstance(detail, dict):

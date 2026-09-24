@@ -102,6 +102,8 @@ resource "aws_api_gateway_integration" "sqs" {
   }
 
   request_templates = {
+    # Keep ingestion synchronous and small: API Gateway validates and enqueues
+    # directly, while the authenticated Cognito subject becomes the user ID.
     "application/json" = <<-VTL
       #set($message = "{\"job_id\":\"$util.escapeJavaScript($input.path('$.job_id'))\",\"source_folder\":\"$util.escapeJavaScript($input.path('$.source_folder'))\",\"destination_folder\":\"$util.escapeJavaScript($input.path('$.destination_folder'))\",\"total_expected_pairs\":$input.path('$.total_expected_pairs'),\"timestamp\":\"$util.escapeJavaScript($input.path('$.timestamp'))\",\"callback_id\":\"$util.escapeJavaScript($input.path('$.callback_id'))\",\"user_id\":\"$util.escapeJavaScript($context.authorizer.claims.sub)\"}")Action=SendMessage&MessageBody=$util.urlEncode($message)
     VTL

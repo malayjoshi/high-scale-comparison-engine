@@ -1,3 +1,5 @@
+// Command dummygen creates reproducible folder pairs with realistic schema,
+// filename, and cell-level differences for comparison-engine testing.
 package main
 
 import (

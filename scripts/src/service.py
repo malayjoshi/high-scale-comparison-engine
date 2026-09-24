@@ -1,3 +1,5 @@
+"""Folder and CSV comparison logic with bounded per-file concurrency."""
+
 from __future__ import annotations
 
 import csv
@@ -16,6 +18,7 @@ _COMPARE_CHUNK_SIZE = 1024 * 1024
 
 
 class ComparisonService:
+    """Compare one source/destination folder pair and build a JSON result."""
     def __init__(self, data_root: Path, result_root: Path, max_workers: int) -> None:
         self.data_root = data_root.resolve()
         self.result_root = result_root
@@ -147,6 +150,7 @@ class ComparisonService:
 
 
 def _files_are_identical(source: Path, destination: Path) -> bool:
+    """Stream exact equality checks so unchanged files never enter the CSV parser."""
     if source.stat().st_size != destination.stat().st_size:
         return False
 

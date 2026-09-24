@@ -1,3 +1,5 @@
+"""Validate the flattened job contract at the worker trust boundary."""
+
 from __future__ import annotations
 
 import json
@@ -16,6 +18,7 @@ class FolderPair:
 
 @dataclass(frozen=True)
 class ComparisonJob:
+    """One independently retryable folder pair within a client-generated job."""
     job_id: str
     pair: FolderPair
     expected_pair_count: int
@@ -25,6 +28,7 @@ class ComparisonJob:
 
     @classmethod
     def from_message(cls, body: str) -> "ComparisonJob":
+        """Parse an SQS message and reject malformed identity or pair metadata."""
         try:
             payload: dict[str, Any] = json.loads(body)
             job_id = str(uuid.UUID(payload["job_id"]))

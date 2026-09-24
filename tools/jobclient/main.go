@@ -1,3 +1,5 @@
+// Command jobclient validates local folder pairs and submits one independently
+// retryable API request per pair under a shared job ID.
 package main
 
 import (

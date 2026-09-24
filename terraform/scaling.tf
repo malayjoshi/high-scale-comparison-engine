@@ -45,6 +45,8 @@ resource "aws_cloudwatch_metric_alarm" "worker_scale_out" {
   alarm_actions       = [aws_autoscaling_policy.worker_scale_out.arn]
 
   metric_query {
+    # Queue depth alone over-scales when tasks are already being processed.
+    # Backlog per in-service worker captures both waiting and in-flight pairs.
     id          = "backlog"
     expression  = "IF(capacity > 0, (visible + inflight) / capacity, visible + inflight)"
     label       = "Folder-pair backlog per worker"

@@ -1,3 +1,5 @@
+"""PostgreSQL-backed job claims, progress tracking, and completion outbox."""
+
 from __future__ import annotations
 
 import uuid
@@ -27,6 +29,7 @@ class OutboxEvent:
 
 
 class JobRepository:
+    """Coordinate many workers without allowing the same pair to run concurrently."""
     def __init__(self, config: DatabaseConfig, worker_id: str, stale_after_seconds: int) -> None:
         self.config = config
         self.worker_id = worker_id
@@ -129,6 +132,7 @@ class JobRepository:
             )
 
     def claim(self, job: ComparisonJob) -> str:
+        """Return ``claimed``, ``busy``, or ``completed`` for an idempotent task."""
         with self._connect() as connection:
             connection.execute(
                 """
@@ -251,6 +255,7 @@ class JobRepository:
         result_path: str,
         result_location: str,
     ) -> str | None:
+        """Commit the pair result and final completion event in one transaction."""
         event_id = str(uuid.uuid4())
         with self._connect() as connection:
             parent = connection.execute(
@@ -377,6 +382,7 @@ class JobRepository:
                 raise RuntimeError(f"lost database claim for job {job.job_id}")
 
     def claim_outbox(self, limit: int = 10) -> list[OutboxEvent]:
+        """Lock a small batch without blocking other dispatchers."""
         with self._connect() as connection:
             rows = connection.execute(
                 """

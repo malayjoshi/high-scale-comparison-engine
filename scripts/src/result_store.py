@@ -1,3 +1,5 @@
+"""Write immutable, partition-friendly comparison documents to S3."""
+
 from __future__ import annotations
 
 import json
@@ -9,6 +11,7 @@ from .request_model import ComparisonJob
 
 
 class S3ResultStore:
+    """Persist one folder-pair result and return its durable S3 location."""
     def __init__(self, s3: Any, bucket: str) -> None:
         self.s3 = s3
         self.bucket = bucket

@@ -1,3 +1,9 @@
+"""Long-running SQS worker for one folder-pair comparison at a time.
+
+SQS supplies durable work, PostgreSQL owns job state and idempotency, and the
+visibility heartbeat prevents another worker from taking over a healthy task.
+"""
+
 from __future__ import annotations
 
 import json
@@ -27,6 +33,7 @@ LOG = logging.getLogger("comparison-worker")
 
 @dataclass(frozen=True)
 class Settings:
+    """Runtime configuration injected by the AMI bootstrap or local benchmark."""
     queue_url: str
     database_endpoint: str
     database_name: str
@@ -57,6 +64,7 @@ class Settings:
 
 
 class VisibilityHeartbeat:
+    """Renew both the SQS lease and database claim while a comparison runs."""
     def __init__(
         self,
         sqs: Any,
@@ -109,6 +117,7 @@ class VisibilityHeartbeat:
 
 
 class Worker:
+    """Claim, compare, persist, and acknowledge folder-pair messages."""
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
         session = boto3.Session()
@@ -169,6 +178,7 @@ class Worker:
         self.stopping = True
 
     def _handle(self, message: dict[str, str]) -> None:
+        """Process one message without deleting it until every durable write succeeds."""
         receipt_handle = message["ReceiptHandle"]
         job: ComparisonJob | None = None
         claimed = False
