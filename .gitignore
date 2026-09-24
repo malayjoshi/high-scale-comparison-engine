@@ -1,5 +1,6 @@
 # Terraform working directories and state
 **/.terraform/*
+**/.build/
 *.tfstate
 *.tfstate.*
 crash.log

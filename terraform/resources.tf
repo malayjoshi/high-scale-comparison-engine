@@ -25,16 +25,16 @@ resource "aws_launch_template" "comparison_engine_launch_template" {
   image_id      = local.worker_ami_id
   instance_type = "t2.micro"
   user_data = base64encode(templatefile("${path.module}/worker-user-data.sh.tftpl", {
-    aws_region          = data.aws_region.current.region
-    database_endpoint   = aws_db_instance.comparison_engine.endpoint
-    database_name       = aws_db_instance.comparison_engine.db_name
-    database_secret_arn = aws_db_instance.comparison_engine.master_user_secret[0].secret_arn
-    dummy_data_version  = var.dummy_data_version
-    efs_id              = aws_efs_file_system.comparison_data.id
-    event_bus_name      = aws_cloudwatch_event_bus.comparison_callbacks.name
-    queue_url           = aws_sqs_queue.comparison_engine_queue.url
-    results_bucket      = aws_s3_bucket.comparison_results.id
-    seed_bucket         = aws_s3_bucket.dummy_data.id
+    aws_region           = data.aws_region.current.region
+    database_endpoint    = aws_db_instance.comparison_engine.endpoint
+    database_name        = aws_db_instance.comparison_engine.db_name
+    database_secret_arn  = aws_db_instance.comparison_engine.master_user_secret[0].secret_arn
+    dummy_data_version   = var.dummy_data_version
+    efs_id               = aws_efs_file_system.comparison_data.id
+    completion_queue_url = aws_sqs_queue.comparison_completion.url
+    queue_url            = aws_sqs_queue.comparison_engine_queue.url
+    results_bucket       = aws_s3_bucket.comparison_results.id
+    seed_bucket          = aws_s3_bucket.dummy_data.id
   }))
   vpc_security_group_ids = [aws_security_group.ec2_sg_comparison_engine.id]
   update_default_version = true
@@ -63,12 +63,11 @@ resource "aws_autoscaling_group" "comparison_engine_asg" {
     aws_efs_mount_target.worker_1,
     aws_efs_mount_target.worker_2,
     aws_iam_role_policy.comparison_worker_database_secret,
-    aws_iam_role_policy.comparison_worker_events,
     aws_iam_role_policy.comparison_worker_results,
     aws_iam_role_policy.comparison_worker_seed_data,
     aws_iam_role_policy.comparison_worker_sqs,
     aws_vpc_endpoint.s3,
-    aws_vpc_endpoint.eventbridge,
+    aws_vpc_endpoint.sqs,
     terraform_data.dummy_data_archive
   ]
 }
@@ -84,6 +83,22 @@ resource "aws_sqs_queue" "comparison_engine_queue" {
 
   redrive_policy = jsonencode({
     deadLetterTargetArn = aws_sqs_queue.comparison_engine_dlq.arn
+    maxReceiveCount     = 5
+  })
+}
+
+resource "aws_sqs_queue" "comparison_completion_dlq" {
+  name                      = "comparison-engine-completion-dlq"
+  message_retention_seconds = 1209600
+}
+
+resource "aws_sqs_queue" "comparison_completion" {
+  name                       = "comparison-engine-completion"
+  visibility_timeout_seconds = 300
+  message_retention_seconds  = 1209600
+
+  redrive_policy = jsonencode({
+    deadLetterTargetArn = aws_sqs_queue.comparison_completion_dlq.arn
     maxReceiveCount     = 5
   })
 }

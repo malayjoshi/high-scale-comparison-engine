@@ -32,7 +32,7 @@ class Settings:
     database_name: str
     database_secret_arn: str
     results_bucket: str
-    event_bus_name: str
+    completion_queue_url: str
     data_root: Path
     result_root: Path
     max_workers: int
@@ -47,7 +47,7 @@ class Settings:
             database_name=os.getenv("COMPARISON_DATABASE_NAME", "comparison_engine"),
             database_secret_arn=_required("COMPARISON_DATABASE_SECRET_ARN"),
             results_bucket=_required("COMPARISON_RESULTS_BUCKET"),
-            event_bus_name=_required("COMPARISON_EVENT_BUS_NAME"),
+            completion_queue_url=_required("COMPARISON_COMPLETION_QUEUE_URL"),
             data_root=Path(os.getenv("COMPARISON_DATA_ROOT", "/mnt/comparison-engine/dummy_data")),
             result_root=Path(os.getenv("COMPARISON_RESULT_ROOT", "/var/tmp/comparison-engine")),
             max_workers=int(os.getenv("COMPARISON_MAX_WORKERS", str(min(32, (os.cpu_count() or 1) * 2)))),
@@ -136,8 +136,8 @@ class Worker:
         )
         self.outbox = OutboxDispatcher(
             self.repository,
-            session.client("events"),
-            settings.event_bus_name,
+            self.sqs,
+            settings.completion_queue_url,
         )
         self.stopping = False
 

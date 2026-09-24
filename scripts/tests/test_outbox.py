@@ -25,37 +25,43 @@ class FakeRepository:
         self.failed.append((event_id, error))
 
 
-class FakeEventBridge:
+class FakeSQS:
     def __init__(self, *, fail: bool = False) -> None:
         self.fail = fail
         self.entries = []
 
-    def put_events(self, *, Entries: list[dict[str, str]]) -> dict[str, object]:
+    def send_message_batch(
+        self, *, QueueUrl: str, Entries: list[dict[str, str]]
+    ) -> dict[str, object]:
+        self.queue_url = QueueUrl
         self.entries.extend(Entries)
         if self.fail:
             return {
-                "FailedEntryCount": 1,
-                "Entries": [{"ErrorCode": "InternalFailure", "ErrorMessage": "retry"}],
+                "Successful": [],
+                "Failed": [
+                    {"Id": Entries[0]["Id"], "Code": "InternalError", "Message": "retry"}
+                ],
             }
-        return {"FailedEntryCount": 0, "Entries": [{"EventId": "eventbridge-id"}]}
+        return {"Successful": [{"Id": Entries[0]["Id"], "MessageId": "sqs-id"}], "Failed": []}
 
 
 class OutboxDispatcherTest(unittest.TestCase):
     def test_publishes_and_marks_event(self) -> None:
         repository = FakeRepository()
-        eventbridge = FakeEventBridge()
-        dispatcher = OutboxDispatcher(repository, eventbridge, "comparison-bus")
+        sqs = FakeSQS()
+        dispatcher = OutboxDispatcher(repository, sqs, "completion-queue-url")
 
         self.assertEqual(dispatcher.dispatch_once(), 1)
         self.assertEqual(repository.published, [repository.event.event_id])
         self.assertEqual(repository.failed, [])
-        entry = eventbridge.entries[0]
-        self.assertEqual(entry["EventBusName"], "comparison-bus")
-        self.assertEqual(json.loads(entry["Detail"])["callback_id"], "client-production")
+        self.assertEqual(sqs.queue_url, "completion-queue-url")
+        message = json.loads(sqs.entries[0]["MessageBody"])
+        self.assertEqual(message["event_id"], repository.event.event_id)
+        self.assertEqual(message["detail"]["callback_id"], "client-production")
 
     def test_failed_publish_is_released_for_retry(self) -> None:
         repository = FakeRepository()
-        dispatcher = OutboxDispatcher(repository, FakeEventBridge(fail=True), "comparison-bus")
+        dispatcher = OutboxDispatcher(repository, FakeSQS(fail=True), "completion-queue-url")
 
         with self.assertLogs("comparison-worker.outbox", level="ERROR"):
             self.assertEqual(dispatcher.dispatch_once(), 1)

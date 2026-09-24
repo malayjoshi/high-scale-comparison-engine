@@ -61,6 +61,11 @@ resource "aws_cognito_resource_server" "comparison_engine" {
     scope_name        = "jobs.write"
     scope_description = "Submit comparison jobs"
   }
+
+  scope {
+    scope_name        = "dashboard.read"
+    scope_description = "View comparison dashboards"
+  }
 }
 
 resource "aws_cognito_user_pool_client" "comparison_engine" {
@@ -74,7 +79,8 @@ resource "aws_cognito_user_pool_client" "comparison_engine" {
   allowed_oauth_scopes = [
     "openid",
     "email",
-    "${aws_cognito_resource_server.comparison_engine.identifier}/jobs.write"
+    "${aws_cognito_resource_server.comparison_engine.identifier}/jobs.write",
+    "${aws_cognito_resource_server.comparison_engine.identifier}/dashboard.read"
   ]
   callback_urls                 = var.oauth_callback_urls
   logout_urls                   = var.oauth_logout_urls

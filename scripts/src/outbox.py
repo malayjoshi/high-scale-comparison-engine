@@ -15,13 +15,13 @@ class OutboxDispatcher:
     def __init__(
         self,
         repository: JobRepository,
-        eventbridge: Any,
-        event_bus_name: str,
+        sqs: Any,
+        queue_url: str,
         poll_interval: float = 2,
     ) -> None:
         self.repository = repository
-        self.eventbridge = eventbridge
-        self.event_bus_name = event_bus_name
+        self.sqs = sqs
+        self.queue_url = queue_url
         self.poll_interval = poll_interval
         self.stop_event = threading.Event()
         self.thread = threading.Thread(target=self._run, name="outbox-dispatcher", daemon=True)
@@ -35,8 +35,8 @@ class OutboxDispatcher:
 
     def dispatch_once(self) -> int:
         events = self.repository.claim_outbox()
-        for event in events:
-            self._publish(event)
+        if events:
+            self._publish(events)
         return len(events)
 
     def _run(self) -> None:
@@ -48,25 +48,42 @@ class OutboxDispatcher:
                 LOG.exception("outbox polling failed")
                 self.stop_event.wait(self.poll_interval)
 
-    def _publish(self, event: OutboxEvent) -> None:
+    def _publish(self, events: list[OutboxEvent]) -> None:
         try:
-            response = self.eventbridge.put_events(
+            response = self.sqs.send_message_batch(
+                QueueUrl=self.queue_url,
                 Entries=[
                     {
-                        "EventBusName": self.event_bus_name,
-                        "Source": "comparison-engine.worker",
-                        "DetailType": event.event_type,
-                        "Detail": json.dumps(event.payload, separators=(",", ":")),
+                        "Id": event.event_id,
+                        "MessageBody": json.dumps(
+                            {
+                                "event_id": event.event_id,
+                                "event_type": event.event_type,
+                                "detail": event.payload,
+                            },
+                            separators=(",", ":"),
+                        ),
                     }
-                ]
+                    for event in events
+                ],
             )
-            entry = response.get("Entries", [{}])[0]
-            if response.get("FailedEntryCount", 0) or entry.get("ErrorCode"):
-                raise RuntimeError(
-                    f"EventBridge rejected event: {entry.get('ErrorCode', 'unknown')} "
-                    f"{entry.get('ErrorMessage', '')}".strip()
-                )
-            self.repository.mark_outbox_published(event.event_id)
         except Exception as exc:
-            self.repository.mark_outbox_failed(event.event_id, str(exc))
-            LOG.exception("failed to publish outbox event %s", event.event_id)
+            for event in events:
+                self.repository.mark_outbox_failed(event.event_id, str(exc))
+            LOG.exception("failed to publish outbox batch")
+            return
+
+        successful_ids = {entry["Id"] for entry in response.get("Successful", [])}
+        failures = {entry["Id"]: entry for entry in response.get("Failed", [])}
+        for event in events:
+            if event.event_id in successful_ids:
+                self.repository.mark_outbox_published(event.event_id)
+                continue
+
+            failure = failures.get(event.event_id, {})
+            error = (
+                f"SQS rejected event: {failure.get('Code', 'unknown')} "
+                f"{failure.get('Message', 'missing batch result')}"
+            ).strip()
+            self.repository.mark_outbox_failed(event.event_id, error)
+            LOG.error("failed to publish outbox event %s: %s", event.event_id, error)

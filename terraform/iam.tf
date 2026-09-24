@@ -48,17 +48,24 @@ resource "aws_iam_role_policy" "comparison_worker_sqs" {
 
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [{
-      Effect = "Allow"
-      Action = [
-        "sqs:ReceiveMessage",
-        "sqs:DeleteMessage",
-        "sqs:ChangeMessageVisibility",
-        "sqs:GetQueueAttributes",
-        "sqs:GetQueueUrl"
-      ]
-      Resource = aws_sqs_queue.comparison_engine_queue.arn
-    }]
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "sqs:ReceiveMessage",
+          "sqs:DeleteMessage",
+          "sqs:ChangeMessageVisibility",
+          "sqs:GetQueueAttributes",
+          "sqs:GetQueueUrl"
+        ]
+        Resource = aws_sqs_queue.comparison_engine_queue.arn
+      },
+      {
+        Effect   = "Allow"
+        Action   = "sqs:SendMessage"
+        Resource = aws_sqs_queue.comparison_completion.arn
+      }
+    ]
   })
 }
 
@@ -100,20 +107,6 @@ resource "aws_iam_role_policy" "comparison_worker_results" {
       Effect   = "Allow"
       Action   = "s3:PutObject"
       Resource = "${aws_s3_bucket.comparison_results.arn}/comparison-results/*"
-    }]
-  })
-}
-
-resource "aws_iam_role_policy" "comparison_worker_events" {
-  name = "comparison-engine-worker-events-policy"
-  role = aws_iam_role.comparison_worker.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Effect   = "Allow"
-      Action   = "events:PutEvents"
-      Resource = aws_cloudwatch_event_bus.comparison_callbacks.arn
     }]
   })
 }

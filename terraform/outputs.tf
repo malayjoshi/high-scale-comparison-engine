@@ -13,14 +13,39 @@ output "comparison_results_bucket" {
   value       = aws_s3_bucket.comparison_results.id
 }
 
+output "glue_comparison_results_table" {
+  description = "Glue Data Catalog table queried by Athena"
+  value       = "${aws_glue_catalog_database.comparison_engine.name}.${aws_glue_catalog_table.comparison_results.name}"
+}
+
+output "athena_analytics_workgroup" {
+  description = "Athena workgroup used for comparison analytics"
+  value       = aws_athena_workgroup.comparison_analytics.name
+}
+
+output "quicksight_comparison_dataset_arn" {
+  description = "QuickSight SPICE dataset ARN when QuickSight is enabled"
+  value       = var.enable_quicksight ? aws_quicksight_data_set.comparison_results[0].arn : null
+}
+
+output "dashboard_embed_url_endpoint" {
+  description = "JWT-protected endpoint that creates registered-reader embed URLs"
+  value       = var.enable_quicksight ? "${aws_api_gateway_stage.production.invoke_url}/dashboard/embed-url" : null
+}
+
 output "worker_ami_id" {
   description = "AMI selected for the comparison worker launch template"
   value       = local.worker_ami_id
 }
 
-output "comparison_event_bus_name" {
-  description = "EventBridge bus receiving transactional-outbox events"
-  value       = aws_cloudwatch_event_bus.comparison_callbacks.name
+output "comparison_completion_queue_url" {
+  description = "SQS queue receiving transactional-outbox completion events"
+  value       = aws_sqs_queue.comparison_completion.url
+}
+
+output "callback_clients_table_name" {
+  description = "DynamoDB table containing authorized callback destinations"
+  value       = aws_dynamodb_table.callback_clients.name
 }
 
 output "database_endpoint" {

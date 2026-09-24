@@ -12,3 +12,21 @@ oauth_callback_urls = [
 oauth_logout_urls = [
   "https://comparison.company.com/"
 ]
+
+callback_clients = {
+  client-production = {
+    url = "https://client.company.com/jobs/completed"
+  }
+}
+
+# Enable only after subscribing the AWS account to QuickSight and creating a user/group.
+# enable_quicksight         = true
+# quicksight_principal_arn  = "arn:aws:quicksight:eu-west-1:123456789012:user/default/username"
+# quicksight_dashboard_id   = "comparison-engine-dashboard"
+# quicksight_embed_allowed_domains = ["https://comparison.company.com"]
+# quicksight_readers = {
+#   "reader@client.example" = {
+#     user_name       = "client-reader"
+#     cognito_subject = "cognito-sub-from-the-authenticated-user-token"
+#   }
+# }
