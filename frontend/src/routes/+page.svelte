@@ -95,10 +95,10 @@
 
 	function statusClasses(status: PairState) {
 		return {
-			queued: 'border-slate-600 bg-slate-800 text-slate-300',
-			started: 'border-amber-400/40 bg-amber-400/10 text-amber-200',
-			completed: 'border-teal-400/40 bg-teal-400/10 text-teal-200',
-			failed: 'border-rose-400/40 bg-rose-400/10 text-rose-200'
+			queued: 'bg-[#e9edf7] text-[#667085]',
+			started: 'bg-[#ebe4fd] text-[#6226ef]',
+			completed: 'bg-[#d9f4ef] text-[#00a389]',
+			failed: 'bg-[#fde5e2] text-[#ef3826]'
 		}[status];
 	}
 
@@ -124,188 +124,334 @@
 	/>
 </svelte:head>
 
-<div class="min-h-screen">
-	<header class="border-b border-slate-800/90 bg-slate-950/60 backdrop-blur">
-		<div class="mx-auto flex max-w-[1500px] items-center justify-between px-5 py-4 lg:px-8">
-			<div class="flex items-center gap-3">
-				<div
-					class="grid h-10 w-10 place-items-center rounded-xl border border-teal-400/30 bg-teal-400/10 text-teal-300"
+<div class="min-h-screen bg-[#f5f6fa] text-[#202224] lg:pl-[240px]">
+	<aside
+		class="fixed inset-y-0 left-0 z-30 hidden w-[240px] border-r border-[#e8e8e8] bg-white lg:flex lg:flex-col"
+	>
+		<div class="flex h-[70px] items-center px-10">
+			<p class="text-xl font-extrabold tracking-tight text-[#4880ff]">
+				Compari<span class="text-[#202224]">Stack</span>
+			</p>
+		</div>
+		<nav class="flex-1 px-6 pt-3" aria-label="Primary navigation">
+			<a
+				class="flex h-[50px] items-center gap-4 rounded-md bg-[#4880ff] px-4 text-sm font-semibold text-white"
+				href="#dashboard"
+			>
+				<svg
+					viewBox="0 0 24 24"
+					class="h-5 w-5"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="1.8"
+					aria-hidden="true"
+					><rect x="3" y="3" width="7" height="7" rx="1" /><rect
+						x="14"
+						y="3"
+						width="7"
+						height="7"
+						rx="1"
+					/><rect x="3" y="14" width="7" height="7" rx="1" /><rect
+						x="14"
+						y="14"
+						width="7"
+						height="7"
+						rx="1"
+					/></svg
 				>
-					<svg
-						viewBox="0 0 24 24"
-						class="h-5 w-5"
-						fill="none"
-						stroke="currentColor"
-						stroke-width="1.8"
-						aria-hidden="true"
-					>
-						<path d="M4 7h16M4 12h10M4 17h16" />
-						<circle cx="17" cy="12" r="3" />
-					</svg>
-				</div>
+				Dashboard
+			</a>
+			<a class="nav-item" href="#jobs">
+				<svg
+					viewBox="0 0 24 24"
+					class="h-5 w-5"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="1.8"
+					aria-hidden="true"
+					><path d="M4 7h16M4 12h10M4 17h16" /><circle cx="17" cy="12" r="3" /></svg
+				>
+				Comparison jobs
+			</a>
+			<a class="nav-item" href="#pipeline">
+				<svg
+					viewBox="0 0 24 24"
+					class="h-5 w-5"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="1.8"
+					aria-hidden="true"><path d="M4 18V6m6 12V9m6 9V3m4 15H2" /></svg
+				>
+				Performance
+			</a>
+			<div class="my-6 border-t border-[#e8e8e8]"></div>
+			<p class="px-4 text-xs font-bold tracking-[0.3px] text-[#202224]/50 uppercase">System</p>
+			<a class="nav-item mt-3" href="#pipeline">
+				<svg
+					viewBox="0 0 24 24"
+					class="h-5 w-5"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="1.8"
+					aria-hidden="true"
+					><path
+						d="M12 2v5m0 10v5M4.93 4.93l3.54 3.54m7.06 7.06 3.54 3.54M2 12h5m10 0h5M4.93 19.07l3.54-3.54m7.06-7.06 3.54-3.54"
+					/><circle cx="12" cy="12" r="4" /></svg
+				>
+				Architecture
+			</a>
+		</nav>
+		<div class="border-t border-[#e8e8e8] px-6 py-5">
+			<div class="flex items-center gap-3 rounded-lg bg-[#f5f6fa] px-3 py-3">
+				<span
+					class={`h-2.5 w-2.5 rounded-full ${api.mode === 'demo' ? 'bg-[#ffb648]' : 'bg-[#00b69b]'}`}
+				></span>
 				<div>
-					<p class="text-sm font-semibold tracking-wide text-white">Comparison Engine</p>
-					<p class="text-xs text-slate-500">Distributed file analysis</p>
+					<p class="text-xs font-bold">{api.mode === 'demo' ? 'Local demo' : 'AWS connected'}</p>
+					<p class="mt-0.5 text-[11px] text-[#606060]">eu-west-1</p>
 				</div>
 			</div>
-			<div class="flex items-center gap-3">
-				<span class="hidden text-xs text-slate-500 sm:inline">eu-west-1</span>
-				<span
-					class="inline-flex items-center gap-2 rounded-full border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs font-medium text-slate-200"
+		</div>
+	</aside>
+
+	<header
+		class="sticky top-0 z-20 flex h-[70px] items-center justify-between border-b border-[#e8e8e8] bg-white px-4 sm:px-7 lg:px-8"
+	>
+		<div class="flex items-center gap-3 lg:hidden">
+			<div
+				class="grid h-9 w-9 place-items-center rounded-lg bg-[#4880ff] text-sm font-extrabold text-white"
+			>
+				C
+			</div>
+			<p class="font-extrabold text-[#4880ff]">Compari<span class="text-[#202224]">Stack</span></p>
+		</div>
+		<label
+			class="hidden h-10 w-[330px] items-center gap-3 rounded-full border border-[#d5d5d5] bg-[#f5f6fa] px-4 md:flex"
+		>
+			<svg
+				viewBox="0 0 24 24"
+				class="h-4 w-4 text-[#202224]/50"
+				fill="none"
+				stroke="currentColor"
+				stroke-width="1.8"
+				aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg
+			>
+			<input
+				class="w-full border-0 bg-transparent text-sm outline-none placeholder:text-[#202224]/40"
+				placeholder="Search jobs"
+				aria-label="Search jobs"
+			/>
+		</label>
+		<div class="ml-auto flex items-center gap-4 sm:gap-6">
+			<button
+				type="button"
+				class="relative grid h-9 w-9 place-items-center rounded-full text-[#4880ff] hover:bg-[#f5f6fa]"
+				aria-label="Notifications"
+			>
+				<svg
+					viewBox="0 0 24 24"
+					class="h-5 w-5"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="1.8"
+					aria-hidden="true"
+					><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" /><path d="M10 21h4" /></svg
 				>
-					<span
-						class={`h-2 w-2 rounded-full ${api.mode === 'demo' ? 'bg-amber-400' : 'bg-teal-400'}`}
-					></span>
-					{api.mode === 'demo' ? 'Local demo' : 'AWS connected'}
-				</span>
+				<span
+					class="absolute top-0 right-0 grid h-4 min-w-4 place-items-center rounded-full bg-[#f93c65] px-1 text-[9px] font-bold text-white"
+					>{queuedPairs}</span
+				>
+			</button>
+			<div class="h-7 border-l border-[#e8e8e8]"></div>
+			<div class="flex items-center gap-3">
+				<div
+					class="grid h-11 w-11 place-items-center rounded-full bg-[#e7efff] text-sm font-extrabold text-[#4880ff]"
+				>
+					MJ
+				</div>
+				<div class="hidden sm:block">
+					<p class="text-sm font-bold text-[#404040]">Malay Joshi</p>
+					<p class="text-xs text-[#565656]">Administrator</p>
+				</div>
 			</div>
 		</div>
 	</header>
 
-	<main class="mx-auto max-w-[1500px] px-5 py-7 lg:px-8">
-		<section class="mb-7 flex flex-col justify-between gap-4 lg:flex-row lg:items-end">
+	<main id="dashboard" class="px-4 py-7 sm:px-7 lg:px-8">
+		<section class="mb-7 flex flex-col justify-between gap-4 xl:flex-row xl:items-start">
 			<div>
-				<p class="mb-2 text-xs font-semibold tracking-[0.2em] text-teal-300 uppercase">
-					Operations dashboard
-				</p>
-				<h1 class="text-3xl font-semibold tracking-tight text-white sm:text-4xl">
-					Follow every folder pair.
-				</h1>
-				<p class="mt-2 max-w-2xl text-sm leading-6 text-slate-400">
-					Submit one independently retryable task per pair, then watch workers claim, compare, and
-					persist results.
+				<h1 class="text-3xl font-bold tracking-tight">Comparison Dashboard</h1>
+				<p class="mt-2 text-sm leading-6 text-[#606060]">
+					Track every folder pair as workers compare, persist, and publish durable results.
 				</p>
 			</div>
-			{#if api.mode === 'demo'}
-				<p
-					class="max-w-md rounded-lg border border-amber-400/20 bg-amber-400/5 px-4 py-3 text-xs leading-5 text-amber-100/80"
+			{#if api.mode === 'demo'}<div
+					class="flex max-w-lg gap-3 rounded-lg border border-[#ffb648]/25 bg-[#fff7e8] px-4 py-3 text-xs leading-5 text-[#805d1b]"
 				>
-					Demo mode uses the production API contract and simulated timing. Switch to the HTTP
-					adapter when AWS authentication and the status endpoint are available.
-				</p>
-			{/if}
+					<svg
+						viewBox="0 0 24 24"
+						class="mt-0.5 h-4 w-4 shrink-0"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="1.8"
+						aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 8v5m0 3h.01" /></svg
+					>
+					<p>
+						Demo mode follows the production API contract with simulated timings. Live mode connects
+						the same interface to API Gateway.
+					</p>
+				</div>{/if}
 		</section>
 
-		<section class="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-			<div class="rounded-xl border border-slate-800 bg-slate-900/70 p-5">
-				<p class="text-xs font-medium tracking-wider text-slate-500 uppercase">Job progress</p>
-				<div class="mt-3 flex items-baseline justify-between">
-					<p class="text-3xl font-semibold text-white">{progressPercent}%</p>
-					<p class="text-xs text-slate-500">
-						{job?.completedPairs ?? 0}/{job?.totalPairs ?? 0} pairs
+		<section class="mb-7 grid gap-5 sm:grid-cols-2 2xl:grid-cols-4">
+			<div class="metric-card">
+				<div>
+					<p class="metric-label">Job progress</p>
+					<p class="metric-value">{progressPercent}%</p>
+					<p class="metric-caption">
+						{job?.completedPairs ?? 0} of {job?.totalPairs ?? 0} pairs complete
 					</p>
 				</div>
+				<span class="metric-icon bg-[#e5e4ff] text-[#8280ff]"
+					><svg
+						viewBox="0 0 24 24"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="1.8"
+						aria-hidden="true"><path d="M4 19V9m5 10V5m5 14v-7m5 7V3" /></svg
+					></span
+				>
 			</div>
-			<div class="rounded-xl border border-slate-800 bg-slate-900/70 p-5">
-				<p class="text-xs font-medium tracking-wider text-slate-500 uppercase">Active work</p>
-				<div class="mt-3 flex items-baseline justify-between">
-					<p class="text-3xl font-semibold text-amber-200">{activePairs}</p>
-					<p class="text-xs text-slate-500">{queuedPairs} queued</p>
+			<div class="metric-card">
+				<div>
+					<p class="metric-label">Active workers</p>
+					<p class="metric-value">{activePairs}</p>
+					<p class="metric-caption">{queuedPairs} tasks waiting in queue</p>
 				</div>
+				<span class="metric-icon bg-[#fff3d6] text-[#fec53d]"
+					><svg
+						viewBox="0 0 24 24"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="1.8"
+						aria-hidden="true"><path d="M8 7V3m8 4V3M6 11h12M5 7h14v14H5z" /></svg
+					></span
+				>
 			</div>
-			<div class="rounded-xl border border-slate-800 bg-slate-900/70 p-5">
-				<p class="text-xs font-medium tracking-wider text-slate-500 uppercase">Result objects</p>
-				<div class="mt-3 flex items-baseline justify-between">
-					<p class="text-3xl font-semibold text-teal-200">{resultCount}</p>
-					<p class="text-xs text-slate-500">encrypted JSON</p>
+			<div class="metric-card">
+				<div>
+					<p class="metric-label">Result objects</p>
+					<p class="metric-value">{resultCount}</p>
+					<p class="metric-caption">Encrypted JSON stored in S3</p>
 				</div>
+				<span class="metric-icon bg-[#d9f7e8] text-[#4ad991]"
+					><svg
+						viewBox="0 0 24 24"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="1.8"
+						aria-hidden="true"
+						><path d="M4 6c0-2 3.6-3 8-3s8 1 8 3-3.6 3-8 3-8-1-8-3Z" /><path
+							d="M4 6v6c0 2 3.6 3 8 3s8-1 8-3V6m-16 6v6c0 2 3.6 3 8 3s8-1 8-3v-6"
+						/></svg
+					></span
+				>
 			</div>
-			<div class="rounded-xl border border-slate-800 bg-slate-900/70 p-5">
-				<p class="text-xs font-medium tracking-wider text-slate-500 uppercase">Measured scaling</p>
-				<div class="mt-3 flex items-baseline justify-between">
-					<p class="text-3xl font-semibold text-sky-200">3.73×</p>
-					<p class="text-xs text-slate-500">4 local workers</p>
+			<div class="metric-card">
+				<div>
+					<p class="metric-label">Measured scaling</p>
+					<p class="metric-value">3.73×</p>
+					<p class="metric-caption">Throughput with 4 local workers</p>
 				</div>
+				<span class="metric-icon bg-[#ffded2] text-[#ff9066]"
+					><svg
+						viewBox="0 0 24 24"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="1.8"
+						aria-hidden="true"><path d="m4 16 5-5 4 4 7-9" /><path d="M15 6h5v5" /></svg
+					></span
+				>
 			</div>
 		</section>
 
-		<div class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
-			<section class="min-w-0 rounded-2xl border border-slate-800 bg-slate-900/60">
-				<div class="border-b border-slate-800 px-5 py-5 sm:px-6">
+		<div id="jobs" class="grid gap-6 2xl:grid-cols-[minmax(0,1fr)_390px]">
+			<section class="dashboard-card min-w-0">
+				<div class="border-b border-[#e8e8e8] px-5 py-5 sm:px-6">
 					<div class="flex flex-wrap items-start justify-between gap-3">
 						<div>
 							<div class="flex items-center gap-2">
-								<h2 class="font-semibold text-white">Current comparison</h2>
-								{#if polling}<span class="h-1.5 w-1.5 animate-pulse rounded-full bg-teal-300"
+								<h2 class="text-lg font-bold">Current comparison</h2>
+								{#if polling}<span class="h-2 w-2 animate-pulse rounded-full bg-[#00b69b]"
 									></span>{/if}
 							</div>
-							<p class="mt-1 font-mono text-xs text-slate-500">
+							<p class="mt-1 font-mono text-xs text-[#7a7a7a]">
 								{job ? shortId(job.jobId) : 'No job submitted'}
 							</p>
 						</div>
 						{#if job}<span
-								class={`rounded-full border px-3 py-1 text-xs font-medium ${job.status === 'completed' ? 'border-teal-400/30 bg-teal-400/10 text-teal-200' : 'border-amber-400/30 bg-amber-400/10 text-amber-200'}`}
+								class={`rounded-[5px] px-4 py-1.5 text-xs font-bold ${job.status === 'completed' ? 'bg-[#d9f4ef] text-[#00a389]' : 'bg-[#ebe4fd] text-[#6226ef]'}`}
 								>{job.status}</span
 							>{/if}
 					</div>
-					<div class="mt-5 h-2 overflow-hidden rounded-full bg-slate-800">
+					<div class="mt-5 h-2 overflow-hidden rounded-full bg-[#edf0f7]">
 						<div
-							class="h-full rounded-full bg-teal-400 transition-[width] duration-500"
+							class="h-full rounded-full bg-[#4880ff] transition-[width] duration-500"
 							style={`width: ${progressPercent}%`}
 						></div>
 					</div>
-					<div class="mt-3 flex flex-wrap gap-x-6 gap-y-1 text-xs text-slate-500">
+					<div class="mt-3 flex flex-wrap gap-x-6 gap-y-1 text-xs text-[#7a7a7a]">
 						<span>Started {formatTime(job?.startedAt)}</span><span
 							>Completed {formatTime(job?.completedAt)}</span
 						><span>Failures {job?.failedPairs ?? 0}</span>
 					</div>
 				</div>
-
 				<div class="overflow-x-auto">
 					<table class="w-full min-w-[720px] text-left text-sm">
 						<thead
-							class="border-b border-slate-800 bg-slate-950/30 text-xs tracking-wider text-slate-500 uppercase"
-						>
-							<tr
-								><th class="px-6 py-3 font-medium">Source</th><th class="px-6 py-3 font-medium"
-									>Destination</th
-								><th class="px-6 py-3 font-medium">Status</th><th class="px-6 py-3 font-medium"
-									>Completed</th
-								><th class="px-6 py-3 font-medium">Result</th></tr
-							>
-						</thead>
-						<tbody class="divide-y divide-slate-800/80">
-							{#each job?.pairs ?? [] as pair (`${pair.sourceFolder}:${pair.destinationFolder}`)}
-								<tr class="transition hover:bg-slate-800/30">
-									<td class="px-6 py-4 font-mono text-xs text-slate-200">{pair.sourceFolder}</td>
-									<td class="px-6 py-4 font-mono text-xs text-slate-200"
-										>{pair.destinationFolder}</td
-									>
-									<td class="px-6 py-4"
+							class="border-b border-[#e8e8e8] bg-[#fafbfd] text-xs font-bold tracking-[0.3px] text-[#202224]/65 uppercase"
+							><tr
+								><th class="px-6 py-4">Source</th><th class="px-6 py-4">Destination</th><th
+									class="px-6 py-4">Status</th
+								><th class="px-6 py-4">Completed</th><th class="px-6 py-4">Result</th></tr
+							></thead
+						><tbody class="divide-y divide-[#e8e8e8]"
+							>{#each job?.pairs ?? [] as pair (`${pair.sourceFolder}:${pair.destinationFolder}`)}<tr
+									class="transition hover:bg-[#f8f9fc]"
+									><td class="px-6 py-4 font-mono text-xs font-semibold">{pair.sourceFolder}</td><td
+										class="px-6 py-4 font-mono text-xs font-semibold">{pair.destinationFolder}</td
+									><td class="px-6 py-4"
 										><span
-											class={`rounded-full border px-2.5 py-1 text-xs font-medium ${statusClasses(pair.status)}`}
+											class={`inline-flex min-w-[88px] justify-center rounded-[5px] px-3 py-1.5 text-xs font-bold capitalize ${statusClasses(pair.status)}`}
 											>{pair.status}</span
 										></td
-									>
-									<td class="px-6 py-4 text-xs text-slate-500">{formatTime(pair.completedAt)}</td>
-									<td
-										class="max-w-[220px] truncate px-6 py-4 font-mono text-xs text-slate-500"
-										title={pair.resultLocation}>{pair.resultLocation ? 'S3 JSON' : '—'}</td
-									>
-								</tr>
-							{:else}<tr
-									><td colspan="5" class="px-6 py-16 text-center text-sm text-slate-500"
+									><td class="px-6 py-4 text-xs text-[#7a7a7a]">{formatTime(pair.completedAt)}</td
+									><td
+										class="max-w-[220px] truncate px-6 py-4 font-mono text-xs text-[#4880ff]"
+										title={pair.resultLocation}>{pair.resultLocation ? 'View S3 JSON' : '—'}</td
+									></tr
+								>{:else}<tr
+									><td colspan="5" class="px-6 py-16 text-center text-sm text-[#7a7a7a]"
 										>Submit a job to see pair-level progress.</td
 									></tr
-								>{/each}
-						</tbody>
+								>{/each}</tbody
+						>
 					</table>
 				</div>
 			</section>
 
-			<aside class="rounded-2xl border border-slate-800 bg-slate-900/60 p-5 sm:p-6">
+			<aside class="dashboard-card p-5 sm:p-6">
 				<div class="flex items-start justify-between gap-3">
 					<div>
-						<h2 class="font-semibold text-white">Submit comparison</h2>
-						<p class="mt-1 text-xs leading-5 text-slate-500">
-							Each row becomes one independently retryable SQS message.
+						<h2 class="text-lg font-bold">Submit comparison</h2>
+						<p class="mt-1 text-xs leading-5 text-[#7a7a7a]">
+							Each row becomes an independently retryable SQS message.
 						</p>
 					</div>
-					<span class="rounded-md bg-slate-800 px-2 py-1 text-xs text-slate-400"
+					<span class="rounded-md bg-[#eef2ff] px-2.5 py-1 text-xs font-bold text-[#4880ff]"
 						>{pairs.length}/100</span
 					>
 				</div>
-
 				<form
 					class="mt-5 space-y-4"
 					onsubmit={(event) => {
@@ -314,21 +460,22 @@
 					}}
 				>
 					<label class="block"
-						><span class="mb-1.5 block text-xs font-medium text-slate-400">Callback ID</span><input
+						><span class="mb-1.5 block text-xs font-bold text-[#404040]">Callback ID</span><input
 							bind:value={callbackId}
-							class="w-full rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2.5 text-sm text-white placeholder:text-slate-600"
+							class="form-input"
 							placeholder="client-demo"
 						/></label
 					>
-					<div class="space-y-3">
-						{#each pairs as pair, index (pair)}
-							<div class="rounded-xl border border-slate-800 bg-slate-950/35 p-3">
+					<div class="max-h-[420px] space-y-3 overflow-y-auto pr-1">
+						{#each pairs as pair, index (pair)}<div
+								class="rounded-xl border border-[#e8e8e8] bg-[#fafbfd] p-3"
+							>
 								<div class="mb-2 flex items-center justify-between">
-									<span class="text-[11px] font-semibold tracking-wider text-slate-600 uppercase"
+									<span class="text-[11px] font-bold tracking-wider text-[#7a7a7a] uppercase"
 										>Pair {index + 1}</span
 									><button
 										type="button"
-										class="text-xs text-slate-600 transition hover:text-rose-300 disabled:opacity-30"
+										class="text-xs font-semibold text-[#a0a0a0] hover:text-[#ef3826] disabled:opacity-30"
 										disabled={pairs.length === 1}
 										onclick={() => removePair(index)}>Remove</button
 									>
@@ -337,44 +484,41 @@
 									<input
 										aria-label={`Pair ${index + 1} source folder`}
 										bind:value={pair.sourceFolder}
-										class="min-w-0 rounded-md border border-slate-800 bg-slate-950 px-2.5 py-2 text-xs text-slate-200"
+										class="form-input min-w-0 px-2.5 py-2 text-xs"
 										placeholder="folder_a"
-									/>
-									<svg
+									/><svg
 										viewBox="0 0 24 24"
-										class="h-4 w-4 text-slate-600"
+										class="h-4 w-4 text-[#a0a0a0]"
 										fill="none"
 										stroke="currentColor"
 										stroke-width="1.8"
 										aria-hidden="true"><path d="M5 12h14m-5-5 5 5-5 5" /></svg
-									>
-									<input
+									><input
 										aria-label={`Pair ${index + 1} destination folder`}
 										bind:value={pair.destinationFolder}
-										class="min-w-0 rounded-md border border-slate-800 bg-slate-950 px-2.5 py-2 text-xs text-slate-200"
+										class="form-input min-w-0 px-2.5 py-2 text-xs"
 										placeholder="folder_b"
 									/>
 								</div>
-							</div>
-						{/each}
+							</div>{/each}
 					</div>
 					<button
 						type="button"
 						onclick={addPair}
 						disabled={pairs.length >= 100}
-						class="w-full rounded-lg border border-dashed border-slate-700 py-2 text-xs font-medium text-slate-400 transition hover:border-slate-500 hover:text-slate-200 disabled:opacity-40"
+						class="w-full rounded-lg border border-dashed border-[#b9c3da] py-2.5 text-xs font-bold text-[#4880ff] transition hover:border-[#4880ff] hover:bg-[#f7f9ff] disabled:opacity-40"
 						>+ Add folder pair</button
 					>
 					{#if error}<p
 							role="alert"
-							class="rounded-lg border border-rose-400/20 bg-rose-400/5 px-3 py-2 text-xs leading-5 text-rose-200"
+							class="rounded-lg bg-[#fde5e2] px-3 py-2 text-xs leading-5 text-[#ef3826]"
 						>
 							{error}
 						</p>{/if}
 					<button
 						type="submit"
 						disabled={submitting}
-						class="flex w-full items-center justify-center gap-2 rounded-lg bg-teal-400 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-teal-300 disabled:cursor-wait disabled:opacity-60"
+						class="flex w-full items-center justify-center gap-2 rounded-lg bg-[#4880ff] px-4 py-3 text-sm font-bold text-white shadow-[0_6px_16px_rgba(72,128,255,0.2)] transition hover:bg-[#3d72e8] disabled:cursor-wait disabled:opacity-60"
 						>{submitting
 							? 'Submitting…'
 							: job
@@ -385,25 +529,25 @@
 			</aside>
 		</div>
 
-		<section class="mt-6 rounded-2xl border border-slate-800 bg-slate-900/40 p-5 sm:p-6">
+		<section id="pipeline" class="dashboard-card mt-6 p-5 sm:p-6">
 			<div class="mb-5 flex flex-wrap items-end justify-between gap-3">
 				<div>
-					<h2 class="font-semibold text-white">Durable job path</h2>
-					<p class="mt-1 text-xs text-slate-500">
-						The browser polls status; comparison and callback delivery remain asynchronous.
+					<h2 class="text-lg font-bold">Durable job path</h2>
+					<p class="mt-1 text-xs text-[#7a7a7a]">
+						The browser polls status while processing and callback delivery stay asynchronous.
 					</p>
 				</div>
-				<span class="text-xs text-slate-600"
-					>Polling interval · 1 second demo / 2–3 seconds production</span
-				>
+				<span class="text-xs text-[#a0a0a0]">1 second demo · 2–3 seconds production</span>
 			</div>
-			<div class="grid gap-2 text-center text-xs sm:grid-cols-3 xl:grid-cols-7">
-				{#each ['WAF + API Gateway', 'SQS work queue', 'Worker ASG', 'EFS input', 'RDS state', 'S3 results', 'Callback queue'] as step, index (step)}
-					<div class="rounded-lg border border-slate-800 bg-slate-950/40 px-3 py-3 text-slate-300">
-						<span class="mb-1 block text-[10px] font-semibold text-teal-400/70">0{index + 1}</span
+			<div class="grid gap-3 text-center text-xs sm:grid-cols-3 xl:grid-cols-7">
+				{#each ['WAF + API', 'SQS queue', 'Worker ASG', 'EFS input', 'RDS state', 'S3 results', 'Callback queue'] as step, index (step)}<div
+						class="rounded-xl border border-[#e8e8e8] bg-[#fafbfd] px-3 py-4 font-semibold text-[#404040]"
+					>
+						<span
+							class="mx-auto mb-2 grid h-7 w-7 place-items-center rounded-full bg-[#e7efff] text-[10px] font-extrabold text-[#4880ff]"
+							>{index + 1}</span
 						>{step}
-					</div>
-				{/each}
+					</div>{/each}
 			</div>
 		</section>
 	</main>

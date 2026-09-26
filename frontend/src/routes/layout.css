@@ -2,13 +2,14 @@
 
 @theme {
 	--font-sans:
-		Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+		'Nunito Sans', Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI',
+		sans-serif;
 }
 
 :root {
 	font-family: var(--font-sans);
-	color: #e2e8f0;
-	background: #07111f;
+	color: #202224;
+	background: #f5f6fa;
 	font-synthesis: none;
 }
 
@@ -16,7 +17,7 @@ body {
 	min-width: 320px;
 	min-height: 100vh;
 	margin: 0;
-	background: radial-gradient(circle at 15% 0%, rgb(13 148 136 / 0.09), transparent 30rem), #07111f;
+	background: #f5f6fa;
 }
 
 button,
@@ -26,6 +27,44 @@ input {
 
 button:focus-visible,
 input:focus-visible {
-	outline: 2px solid #2dd4bf;
+	outline: 2px solid #4880ff;
 	outline-offset: 2px;
+}
+
+@layer components {
+	.nav-item {
+		@apply flex h-[50px] items-center gap-4 rounded-md px-4 text-sm font-semibold text-[#202224] transition hover:bg-[#f5f6fa] hover:text-[#4880ff];
+	}
+
+	.dashboard-card {
+		@apply rounded-[14px] bg-white shadow-[6px_6px_54px_rgba(0,0,0,0.05)];
+	}
+
+	.metric-card {
+		@apply flex min-h-[145px] items-start justify-between rounded-[14px] bg-white p-5 shadow-[6px_6px_54px_rgba(0,0,0,0.05)];
+	}
+
+	.metric-label {
+		@apply text-sm font-semibold text-[#202224]/70;
+	}
+
+	.metric-value {
+		@apply mt-3 text-[28px] font-bold tracking-tight text-[#202224];
+	}
+
+	.metric-caption {
+		@apply mt-3 text-xs text-[#606060];
+	}
+
+	.metric-icon {
+		@apply grid h-[60px] w-[60px] shrink-0 place-items-center rounded-[18px];
+	}
+
+	.metric-icon svg {
+		@apply h-7 w-7;
+	}
+
+	.form-input {
+		@apply w-full rounded-lg border border-[#d5d5d5] bg-white px-3 py-2.5 text-sm text-[#202224] outline-none placeholder:text-[#a0a0a0] focus:border-[#4880ff];
+	}
 }
