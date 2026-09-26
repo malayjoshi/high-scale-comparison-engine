@@ -116,6 +116,24 @@ worker throughput without changing the job logic.
 This proves local horizontal concurrency, not EC2 Auto Scaling behavior.
 LocalStack models the ASG control plane but does not launch real instances.
 
+## Portfolio dashboard
+
+The [`frontend`](frontend) directory contains a SvelteKit and Tailwind
+operations dashboard. It submits flattened folder-pair requests, polls parent
+job progress, shows each pair moving from queued to active to completed, and
+links completed pairs to their S3 result locations.
+
+It defaults to an explicitly labelled demo adapter while AWS authentication is
+unavailable. The production HTTP adapter is already separated behind the same
+interface; connecting it requires the remaining authenticated
+`GET /jobs/{job_id}` endpoint and Cognito OAuth callback.
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
 ## Run locally
 
 ### 1. Generate deterministic comparison data
@@ -161,6 +179,7 @@ terraform -chdir=terraform validate
 | `tools/jobclient` | Validates folders and submits flattened pair requests |
 | `scripts/src` | Worker, comparison engine, DB repository, outbox, and S3 writer |
 | `callback` | SQS-triggered completion callback Lambda |
+| `frontend` | SvelteKit/Tailwind submission and progress dashboard |
 | `packer` | Builds an Amazon Linux worker AMI |
 | `terraform` | AWS networking, security, compute, storage, queues, and observability |
 | `architecture-web-app` | Standalone visual architecture walkthrough |
