@@ -25,6 +25,7 @@ allow-listed.
 - Private access to SQS, S3, EFS, RDS, and Secrets Manager from worker subnets
 - Streaming equality checks that skip CSV parsing for unchanged files
 - Deterministic test-data generation and a repeatable scaling benchmark
+- Live pair-level status polling with short-lived links to private S3 results
 
 ## Architecture
 
@@ -35,10 +36,13 @@ flowchart LR
     Cognito -->|Short-lived JWT| User
     WAF --> API[API Gateway<br/>schema validation]
     API -->|direct integration| InputQueue[SQS work queue]
+    API -->|GET job status| StatusLambda[Status Lambda]
     InputQueue --> Workers[EC2 worker ASG]
     Workers <--> EFS[EFS input data]
     Workers --> S3[S3 JSON results]
     Workers <--> RDS[(RDS PostgreSQL)]
+    StatusLambda -->|read progress| RDS
+    StatusLambda -->|presign result links| S3
     RDS -->|transactional outbox| Workers
     Workers --> CompletionQueue[SQS completion queue]
     CompletionQueue --> Lambda[Callback Lambda]
@@ -123,10 +127,10 @@ operations dashboard. It submits flattened folder-pair requests, polls parent
 job progress, shows each pair moving from queued to active to completed, and
 links completed pairs to their S3 result locations.
 
-It defaults to an explicitly labelled demo adapter while AWS authentication is
-unavailable. The production HTTP adapter is already separated behind the same
-interface; connecting it requires the remaining authenticated
-`GET /jobs/{job_id}` endpoint and Cognito OAuth callback.
+It defaults to an explicitly labelled demo adapter when no API URL is
+configured. Live mode uses Cognito's authorization-code flow with PKCE,
+submits each pair independently, polls `GET /jobs/{job_id}`, and opens private
+JSON results through 15-minute S3 presigned URLs.
 
 ```bash
 cd frontend
@@ -160,6 +164,12 @@ scripts/.venv/bin/pip install -r scripts/requirements.txt
 Follow [terraform/LOCALSTACK.md](terraform/LOCALSTACK.md). The entire control
 plane was verified with one Terraform apply: 76 resources created, followed
 by a clean no-change plan.
+
+LocalStack provisions the queues, database, Lambdas, and buckets, but its Auto
+Scaling emulation does not boot worker VMs. Use `scripts/benchmark_workers.py`
+to run the real worker code as local processes against LocalStack and
+PostgreSQL. See the LocalStack guide for the boundary between emulated
+services and local processes.
 
 ### 4. Run the checks
 

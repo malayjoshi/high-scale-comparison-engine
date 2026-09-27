@@ -45,13 +45,31 @@ terraform -chdir=terraform plan -detailed-exitcode -var-file=localstack.tfvars
 
 Exit code `0` means there are no changes.
 
+## What runs where
+
+LocalStack runs the AWS-facing side of the application: API Gateway, SQS,
+Lambda, S3, Secrets Manager, and PostgreSQL. The comparison workers are normal
+Python processes. In AWS, an Auto Scaling group starts them on EC2; locally,
+the benchmark starts the same worker entry point as child processes:
+
+```bash
+AWS_PROFILE=localstack \
+AWS_DEFAULT_REGION=eu-west-1 \
+AWS_ENDPOINT_URL=http://localhost:4566 \
+AWS_EC2_METADATA_DISABLED=true \
+scripts/.venv/bin/python scripts/benchmark_workers.py --workers 1,2,4
+```
+
+The benchmark owns temporary queues and stops its workers when each trial
+finishes. It proves the comparison, PostgreSQL, S3, and outbox path; it is not
+a background worker supervisor for the dashboard.
+
 ## Emulation boundaries
 
 - API Gateway, native Cognito user-pool configuration, WAF, SQS, Lambda, DynamoDB, S3,
   EFS, RDS, CloudWatch alarms, and Auto Scaling resources can be provisioned.
 - Auto Scaling is a control-plane emulation; it does not boot real EC2 worker
-  virtual machines. Run `scripts/benchmark_workers.py` to exercise concurrent
-  workers as local processes.
+  virtual machines.
 - EFS resources and mount targets are modeled, but no real ASG instance mounts
   the file system locally.
 - LocalStack models the Cognito control plane, but its managed login should not

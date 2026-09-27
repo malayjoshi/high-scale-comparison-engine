@@ -26,6 +26,8 @@ from src.repo import DatabaseConfig, JobRepository
 
 @dataclass(frozen=True)
 class TrialResult:
+    """The timing result for one worker-count trial."""
+
     workers: int
     jobs: int
     seconds: float
@@ -36,6 +38,7 @@ class TrialResult:
 
 
 def parse_args() -> argparse.Namespace:
+    """Read benchmark size, database, and generated-data settings."""
     parser = argparse.ArgumentParser(
         description="Benchmark local comparison workers against LocalStack and PostgreSQL."
     )
@@ -56,6 +59,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def folder_label(index: int) -> str:
+    """Match dummygen's folder_a, folder_b, ... folder_aa naming scheme."""
     label = ""
     value = index + 1
     while value:
@@ -88,6 +92,7 @@ class Benchmark:
         )
 
     def setup(self) -> None:
+        """Create isolated AWS resources and initialize the shared schema."""
         if not self.python.is_file():
             raise RuntimeError(f"worker Python interpreter not found: {self.python}")
         if not self.args.data_root.is_dir():
@@ -108,6 +113,7 @@ class Benchmark:
         self.secret_arn = secret["ARN"]
 
     def cleanup(self) -> None:
+        """Best-effort cleanup so an interrupted benchmark remains rerunnable."""
         for queue_url in self.created_queues:
             try:
                 self.sqs.delete_queue(QueueUrl=queue_url)
@@ -131,6 +137,7 @@ class Benchmark:
                 pass
 
     def trial(self, worker_count: int, jobs: int, timeout: int) -> TrialResult:
+        """Run one workload against fresh queues and an empty job database."""
         self._reset_database()
         input_queue = self._create_queue(f"comparison-benchmark-{self.run_id}-{worker_count}-input")
         completion_queue = self._create_queue(
@@ -237,6 +244,7 @@ class Benchmark:
                     process.wait()
 
     def _enqueue_jobs(self, queue_url: str, jobs: int) -> None:
+        """Submit one parent job split into independently claimable pair messages."""
         messages = []
         job_id = str(uuid.uuid4())
         requested_at = datetime.now(timezone.utc).isoformat()
@@ -269,6 +277,7 @@ class Benchmark:
         processes: list[subprocess.Popen[bytes]],
         logs: list[object],
     ) -> None:
+        """Wait for durable completion rather than trusting an empty queue."""
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             failed_processes = [process for process in processes if process.poll() is not None]

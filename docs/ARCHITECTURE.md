@@ -27,6 +27,13 @@ Only a successful SQS response becomes HTTP `202`. Integration-side 4xx and
 other failures map to `400` and `500`, so the client is never told a job was
 accepted when it was not queued.
 
+Reads take a separate path. `GET /jobs/{job_id}` invokes a small Lambda that
+loads the RDS-managed credentials from Secrets Manager, reads parent and pair
+state from PostgreSQL, and returns the current snapshot. Completed pairs also
+receive a 15-minute presigned S3 URL. The bucket stays private; the browser
+gets permission for one result object and a short window instead of permanent
+S3 credentials.
+
 ## Why the client flattens jobs
 
 The original shape put a list of folder pairs in one message. That made one
@@ -115,6 +122,10 @@ to an enabled destination managed by Terraform. The Lambda:
 | DynamoDB | Small, independently managed callback allow-list |
 | Instance storage | Atomic temporary JSON copy for local recovery/debugging |
 
+The status response preserves the durable `s3://` location and adds a
+short-lived browser URL at read time. URLs are never stored in PostgreSQL
+because they expire and can always be regenerated from the durable location.
+
 S3 result keys use this shape:
 
 ```text
@@ -152,6 +163,8 @@ capacity and callback reliability can therefore evolve independently.
 - RDS permits PostgreSQL only from the worker security group.
 - Worker IAM grants access to the specific queues, buckets, and database
   secret required by the service.
+- The status Lambda can read the database secret and result objects, but it
+  cannot enqueue work or modify comparison state.
 - WAF protects the regional API Gateway stage with managed rules and an IP
   rate limit.
 

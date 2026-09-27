@@ -1,5 +1,36 @@
 import { describe, expect, it } from 'vitest';
-import { DemoComparisonApi } from './api';
+import { DemoComparisonApi, fromApi } from './api';
+
+it('maps live API pair progress', () => {
+	const completedAt = '2026-09-27T15:55:42.568608Z';
+	const job = fromApi({
+		job_id: '652f53ea-bccb-46e0-bf9f-6a5071b72f69',
+		status: 'completed',
+		total_pairs: 1,
+		completed_pairs: 1,
+		failed_pairs: 0,
+		started_at: '2026-09-27T15:55:32.568608Z',
+		completed_at: completedAt,
+		pairs: [
+			{
+				sourceFolder: 'folder_a',
+				destinationFolder: 'folder_b',
+				status: 'completed',
+				completedAt,
+				resultLocation: 's3://results/folder_a__folder_b.json',
+				resultUrl: 'https://results.example/folder_a__folder_b.json'
+			}
+		]
+	});
+
+	expect(job.pairs[0]).toMatchObject({
+		sourceFolder: 'folder_a',
+		destinationFolder: 'folder_b',
+		status: 'completed',
+		completedAt,
+		resultUrl: 'https://results.example/folder_a__folder_b.json'
+	});
+});
 
 describe('DemoComparisonApi', () => {
 	it('advances folder pairs independently and completes the parent job', async () => {

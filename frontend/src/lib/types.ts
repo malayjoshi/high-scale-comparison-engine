@@ -17,6 +17,7 @@ export interface PairProgress extends FolderPairInput {
 	startedAt?: string;
 	completedAt?: string;
 	resultLocation?: string;
+	resultUrl?: string;
 	error?: string;
 }
 

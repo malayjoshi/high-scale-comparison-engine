@@ -486,9 +486,13 @@
 											>{pair.status}</span
 										></td
 									><td class="px-6 py-4 text-xs text-[#7a7a7a]">{formatTime(pair.completedAt)}</td
-									><td
-										class="max-w-[220px] truncate px-6 py-4 font-mono text-xs text-[#4880ff]"
-										title={pair.resultLocation}>{pair.resultLocation ? 'View S3 JSON' : '—'}</td
+									><td class="max-w-[220px] truncate px-6 py-4 text-xs"
+										>{#if pair.resultUrl}<a
+												class="font-semibold text-[#4880ff] hover:underline"
+												href={pair.resultUrl}
+												target="_blank"
+												rel="external noreferrer">View JSON</a
+											>{:else}—{/if}</td
 									></tr
 								>{:else}<tr
 									><td colspan="5" class="px-6 py-16 text-center text-sm text-[#7a7a7a]"

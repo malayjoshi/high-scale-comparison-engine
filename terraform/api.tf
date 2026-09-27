@@ -287,14 +287,14 @@ resource "null_resource" "get_job_build" {
   }
 
   provisioner "local-exec" {
-    command = <<-EOT
+    command     = <<-EOT
       python3 << 'PYTHON_EOF'
       import os
       import shutil
+      import subprocess
       import zipfile
       from pathlib import Path
 
-      venv_site = Path("${path.module}/../scripts/.venv/lib/python3.14/site-packages")
       build_dir = Path("${path.module}/.build/get-job-tmp")
       zip_file = Path("${path.module}/.build/get-job.zip")
 
@@ -306,14 +306,17 @@ resource "null_resource" "get_job_build" {
       # Copy handler
       shutil.copy("${path.module}/../api_handlers/get_job.py", build_dir)
 
-      # Copy psycopg and dependencies
-      for pkg in ["psycopg", "psycopg_binary", "psycopg_binary.libs"]:
-        pkg_path = venv_site / pkg
-        if pkg_path.exists():
-          if pkg_path.is_dir():
-            shutil.copytree(pkg_path, build_dir / pkg)
-          else:
-            shutil.copy(pkg_path, build_dir / pkg)
+      # Build native wheels for Lambda's runtime instead of copying packages
+      # from the developer machine's Python version.
+      subprocess.run([
+          "${path.module}/../scripts/.venv/bin/python", "-m", "pip", "install",
+          "--platform", "manylinux2014_x86_64",
+          "--implementation", "cp",
+          "--python-version", "3.13",
+          "--only-binary=:all:",
+          "--target", str(build_dir),
+          "-r", "${path.module}/../api_handlers/requirements.txt",
+      ], check=True)
 
       # Create zip
       with zipfile.ZipFile(zip_file, 'w', zipfile.ZIP_DEFLATED) as zf:
@@ -374,9 +377,14 @@ resource "aws_iam_role_policy" "get_job_lambda" {
         Resource = "*"
       },
       {
-        Effect = "Allow"
-        Action = "secretsmanager:GetSecretValue"
-        Resource = "arn:aws:secretsmanager:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:secret:rds!db-${aws_db_instance.comparison_engine.resource_id}/*"
+        Effect   = "Allow"
+        Action   = "secretsmanager:GetSecretValue"
+        Resource = aws_db_instance.comparison_engine.master_user_secret[0].secret_arn
+      },
+      {
+        Effect   = "Allow"
+        Action   = "s3:GetObject"
+        Resource = "${aws_s3_bucket.comparison_results.arn}/comparison-results/*"
       }
     ]
   })
@@ -390,8 +398,11 @@ resource "aws_lambda_function" "get_job" {
   timeout       = 15
   memory_size   = 256
 
-  filename         = "${path.module}/.build/get-job.zip"
-  source_code_hash = filebase64sha256("${path.module}/../api_handlers/get_job.py")
+  filename = "${path.module}/.build/get-job.zip"
+  source_code_hash = base64sha256(join("", [
+    file("${path.module}/../api_handlers/get_job.py"),
+    file("${path.module}/../api_handlers/requirements.txt")
+  ]))
 
   # VPC configuration only for real AWS; LocalStack doesn't need it
   dynamic "vpc_config" {
@@ -404,12 +415,12 @@ resource "aws_lambda_function" "get_job" {
 
   environment {
     variables = {
-      DB_HOST          = aws_db_instance.comparison_engine.address
-      DB_PORT          = aws_db_instance.comparison_engine.port
-      DB_NAME          = aws_db_instance.comparison_engine.db_name
-      DB_USER          = aws_db_instance.comparison_engine.username
-      DB_SECRET_ARN    = "arn:aws:secretsmanager:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:secret:rds!db-${aws_db_instance.comparison_engine.resource_id}/*"
-      FRONTEND_ORIGIN  = var.frontend_origin
+      DB_HOST         = aws_db_instance.comparison_engine.address
+      DB_PORT         = aws_db_instance.comparison_engine.port
+      DB_NAME         = aws_db_instance.comparison_engine.db_name
+      DB_USER         = aws_db_instance.comparison_engine.username
+      DB_SECRET_ARN   = aws_db_instance.comparison_engine.master_user_secret[0].secret_arn
+      FRONTEND_ORIGIN = var.frontend_origin
     }
   }
 
@@ -460,11 +471,11 @@ resource "aws_api_gateway_resource" "job_detail" {
 
 # GET method for job status
 resource "aws_api_gateway_method" "get_job" {
-  rest_api_id          = aws_api_gateway_rest_api.comparison_engine.id
-  resource_id          = aws_api_gateway_resource.job_detail.id
-  http_method          = "GET"
-  authorization        = "COGNITO_USER_POOLS"
-  authorizer_id        = aws_api_gateway_authorizer.comparison_engine.id
+  rest_api_id   = aws_api_gateway_rest_api.comparison_engine.id
+  resource_id   = aws_api_gateway_resource.job_detail.id
+  http_method   = "GET"
+  authorization = "COGNITO_USER_POOLS"
+  authorizer_id = aws_api_gateway_authorizer.comparison_engine.id
   authorization_scopes = var.enforce_cognito_scope ? [
     "${aws_cognito_resource_server.comparison_engine.identifier}/jobs.read"
   ] : []

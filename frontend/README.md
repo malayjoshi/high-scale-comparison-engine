@@ -28,7 +28,8 @@ PUBLIC_COGNITO_DOMAIN=https://comparison-engine.auth.eu-west-1.amazoncognito.com
 PUBLIC_COGNITO_CLIENT_ID=exampleclientid
 PUBLIC_COGNITO_REDIRECT_URI=http://localhost:5173/auth/callback
 PUBLIC_COGNITO_LOGOUT_URI=http://localhost:5173/
-PUBLIC_COGNITO_SCOPES=openid email comparison-engine/jobs.write
+PUBLIC_COGNITO_SCOPES=openid email comparison-engine/jobs.write comparison-engine/jobs.read
+PUBLIC_STATUS_API_ENABLED=true
 ```
 
 For the deployed LocalStack stack, use
@@ -46,15 +47,12 @@ The frontend calls:
 - `POST /jobs` once for every folder pair;
 - `GET /jobs/{job_id}` while the parent job is active.
 
-The status endpoint is the remaining backend dependency and should return the
-shape represented by `src/lib/types.ts`. Native Cognito sign-in and API CORS
-are managed by Terraform; demo mode does not pretend the missing status Lambda
-has been deployed.
-
-For LocalStack, set `PUBLIC_STATUS_API_ENABLED=false`. Successful submissions
-then remain visibly queued instead of failing on the intentionally absent
-status endpoint. Real deployments should keep it enabled after implementing
-`GET /jobs/{job_id}`.
+The status Lambda reads PostgreSQL and returns the shape represented by
+`src/lib/types.ts`. Completed rows include a 15-minute presigned S3 URL, which
+the dashboard exposes as **View JSON**. Keep `PUBLIC_STATUS_API_ENABLED=true`
+for the deployed LocalStack or AWS stack. Setting it to `false` is only useful
+for UI work without a status backend; submitted rows then remain queued in the
+browser session.
 
 ## Checks
 

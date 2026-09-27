@@ -38,6 +38,7 @@ export function isCognitoConfigured(): boolean {
 }
 
 export async function startSignIn(): Promise<void> {
+	// The verifier stays in this tab; Cognito receives only its SHA-256 challenge.
 	const config = getConfig();
 	const verifier = randomUrlSafeString(64);
 	const state = randomUrlSafeString(32);
@@ -59,6 +60,7 @@ export async function startSignIn(): Promise<void> {
 }
 
 export async function completeSignIn(callbackUrl = window.location.href): Promise<AuthUser> {
+	// State binds the callback to the sign-in attempt that started in this tab.
 	const config = getConfig();
 	const callback = new URL(callbackUrl);
 	const error = callback.searchParams.get('error');

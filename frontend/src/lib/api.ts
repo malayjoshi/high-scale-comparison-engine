@@ -10,12 +10,13 @@ import type {
 } from './types';
 
 interface RawPairProgress {
-	source_folder: string;
-	destination_folder: string;
+	sourceFolder: string;
+	destinationFolder: string;
 	status: PairState;
-	timestamp_start?: string;
-	comparison_completed_at?: string;
-	result_location?: string;
+	startedAt?: string;
+	completedAt?: string;
+	resultLocation?: string;
+	resultUrl?: string;
 	error?: string;
 }
 
@@ -31,6 +32,7 @@ interface RawJobProgress {
 }
 
 export class HttpComparisonApi implements ComparisonApi {
+	/** Live adapter for the authenticated API Gateway endpoints. */
 	readonly mode = 'live' as const;
 	private readonly queuedJobs = new Map<string, JobProgress>();
 
@@ -42,6 +44,7 @@ export class HttpComparisonApi implements ComparisonApi {
 
 	async submitJob(input: SubmitJobInput): Promise<JobProgress> {
 		const timestamp = new Date().toISOString();
+		// Each pair is its own retryable SQS unit while sharing one parent job ID.
 		for (const pair of input.pairs) {
 			await this.request('/jobs', {
 				method: 'POST',
@@ -105,6 +108,7 @@ export class HttpComparisonApi implements ComparisonApi {
 }
 
 export class DemoComparisonApi implements ComparisonApi {
+	/** Browser-only simulation used when no backend URL is configured. */
 	readonly mode = 'demo' as const;
 	private readonly jobs = new Map<string, { input: SubmitJobInput; startedAt: number }>();
 
@@ -178,7 +182,8 @@ export function createComparisonApi(): ComparisonApi {
 	return new HttpComparisonApi(baseUrl, getAccessToken, env.PUBLIC_STATUS_API_ENABLED !== 'false');
 }
 
-function fromApi(raw: RawJobProgress): JobProgress {
+export function fromApi(raw: RawJobProgress): JobProgress {
+	// Keep wire-format naming at this boundary so UI code stays idiomatic TypeScript.
 	return {
 		jobId: raw.job_id,
 		status: raw.status,
@@ -188,12 +193,13 @@ function fromApi(raw: RawJobProgress): JobProgress {
 		startedAt: raw.started_at,
 		completedAt: raw.completed_at,
 		pairs: raw.pairs.map((pair) => ({
-			sourceFolder: pair.source_folder,
-			destinationFolder: pair.destination_folder,
+			sourceFolder: pair.sourceFolder,
+			destinationFolder: pair.destinationFolder,
 			status: pair.status,
-			startedAt: pair.timestamp_start,
-			completedAt: pair.comparison_completed_at,
-			resultLocation: pair.result_location,
+			startedAt: pair.startedAt,
+			completedAt: pair.completedAt,
+			resultLocation: pair.resultLocation,
+			resultUrl: pair.resultUrl,
 			error: pair.error
 		}))
 	};
