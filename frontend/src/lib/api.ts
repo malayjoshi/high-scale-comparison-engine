@@ -1,4 +1,5 @@
 import { env } from '$env/dynamic/public';
+import { getAccessToken, getCurrentUser } from './auth';
 import type {
 	ComparisonApi,
 	FolderPairInput,
@@ -31,10 +32,12 @@ interface RawJobProgress {
 
 export class HttpComparisonApi implements ComparisonApi {
 	readonly mode = 'live' as const;
+	private readonly queuedJobs = new Map<string, JobProgress>();
 
 	constructor(
 		private readonly baseUrl: string,
-		private readonly token: () => string | null
+		private readonly token: () => string | null,
+		private readonly statusApiEnabled = true
 	) {}
 
 	async submitJob(input: SubmitJobInput): Promise<JobProgress> {
@@ -48,15 +51,33 @@ export class HttpComparisonApi implements ComparisonApi {
 					destination_folder: pair.destinationFolder,
 					total_expected_pairs: input.pairs.length,
 					timestamp,
-					callback_id: input.callbackId
+					callback_id: input.callbackId,
+					...(env.PUBLIC_COGNITO_USE_ID_TOKEN === 'true'
+						? { user_id: getCurrentUser()?.subject }
+						: {})
 				})
 			});
 		}
 
-		return this.getJob(input.jobId);
+		const queued: JobProgress = {
+			jobId: input.jobId,
+			status: 'started',
+			totalPairs: input.pairs.length,
+			completedPairs: 0,
+			failedPairs: 0,
+			startedAt: timestamp,
+			pairs: input.pairs.map((pair) => ({ ...pair, status: 'queued' }))
+		};
+		this.queuedJobs.set(input.jobId, queued);
+		return queued;
 	}
 
 	async getJob(jobId: string): Promise<JobProgress> {
+		if (!this.statusApiEnabled) {
+			const queued = this.queuedJobs.get(jobId);
+			if (!queued) throw new Error(`Job ${jobId} was not found in this browser session.`);
+			return queued;
+		}
 		const response = await this.request(`/jobs/${encodeURIComponent(jobId)}`);
 		return fromApi(await response.json());
 	}
@@ -154,11 +175,7 @@ export function createComparisonApi(): ComparisonApi {
 	const demoMode = env.PUBLIC_DEMO_MODE !== 'false' || !baseUrl;
 	if (demoMode) return new DemoComparisonApi();
 
-	return new HttpComparisonApi(baseUrl, () =>
-		typeof sessionStorage === 'undefined'
-			? null
-			: sessionStorage.getItem('comparison-engine-access-token')
-	);
+	return new HttpComparisonApi(baseUrl, getAccessToken, env.PUBLIC_STATUS_API_ENABLED !== 'false');
 }
 
 function fromApi(raw: RawJobProgress): JobProgress {

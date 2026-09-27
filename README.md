@@ -18,7 +18,7 @@ allow-listed.
 ## What it demonstrates
 
 - Asynchronous ingestion with API Gateway directly integrated with SQS
-- Microsoft Entra ID / AD federation through Cognito and short-lived JWTs
+- Native Cognito users, managed login, PKCE, and short-lived JWTs
 - Horizontal worker scaling from queue backlog per active worker
 - Multi-AZ PostgreSQL state with idempotent, concurrency-safe claims
 - A transactional outbox so completion events are not lost after a DB commit
@@ -31,8 +31,8 @@ allow-listed.
 ```mermaid
 flowchart LR
     User[Authenticated client] --> WAF[AWS WAF]
-    Entra[Microsoft Entra ID / AD] --> Cognito[Amazon Cognito]
-    Cognito -->|JWT| User
+    User -->|Authorization code + PKCE| Cognito[Amazon Cognito user pool]
+    Cognito -->|Short-lived JWT| User
     WAF --> API[API Gateway<br/>schema validation]
     API -->|direct integration| InputQueue[SQS work queue]
     InputQueue --> Workers[EC2 worker ASG]
@@ -192,7 +192,7 @@ deployment still needs to verify:
 
 - AMI boot, EFS mounting, and worker startup on EC2;
 - CloudWatch-driven ASG scale-out and scale-in;
-- Microsoft Entra SAML login against a real tenant;
+- Cognito managed-login OAuth flow against real AWS;
 - WAF enforcement, RDS failover, and private endpoint routing;
 - callback delivery to a real HTTPS client under load.
 

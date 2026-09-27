@@ -1,6 +1,13 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { createComparisonApi } from '$lib/api';
+	import {
+		getCurrentUser,
+		isCognitoConfigured,
+		signOut,
+		startSignIn,
+		type AuthUser
+	} from '$lib/auth';
 	import type { FolderPairInput, JobProgress, PairState } from '$lib/types';
 
 	const api = createComparisonApi();
@@ -15,6 +22,8 @@
 	let submitting = $state(false);
 	let polling = $state(false);
 	let error = $state('');
+	let authUser = $state<AuthUser | null>(null);
+	let authBusy = $state(false);
 
 	let progressPercent = $derived(
 		job && job.totalPairs > 0 ? Math.round((job.completedPairs / job.totalPairs) * 100) : 0
@@ -24,6 +33,7 @@
 	let resultCount = $derived(job?.pairs.filter((pair) => pair.resultLocation).length ?? 0);
 
 	onMount(() => {
+		authUser = getCurrentUser();
 		if (api.mode === 'demo') void submitJob();
 	});
 
@@ -36,6 +46,10 @@
 	async function submitJob() {
 		if (submitting) return;
 		error = '';
+		if (api.mode === 'live' && !authUser) {
+			error = 'Sign in with Cognito before submitting a comparison.';
+			return;
+		}
 		const cleaned = pairs.map((pair) => ({
 			sourceFolder: pair.sourceFolder.trim(),
 			destinationFolder: pair.destinationFolder.trim()
@@ -68,6 +82,35 @@
 		} finally {
 			submitting = false;
 		}
+	}
+
+	async function login() {
+		authBusy = true;
+		error = '';
+		try {
+			await startSignIn();
+		} catch (cause) {
+			error = cause instanceof Error ? cause.message : 'Sign-in could not be started.';
+			authBusy = false;
+		}
+	}
+
+	function logout() {
+		try {
+			signOut();
+		} catch (cause) {
+			error = cause instanceof Error ? cause.message : 'Sign-out could not be started.';
+		}
+	}
+
+	function userInitials(user: AuthUser | null) {
+		if (!user) return api.mode === 'demo' ? 'MJ' : '?';
+		return user.email
+			.split(/[^A-Za-z0-9]+/)
+			.filter(Boolean)
+			.slice(0, 2)
+			.map((part) => part[0]?.toUpperCase())
+			.join('');
 	}
 
 	async function refreshJob() {
@@ -263,17 +306,34 @@
 				>
 			</button>
 			<div class="h-7 border-l border-[#e8e8e8]"></div>
-			<div class="flex items-center gap-3">
-				<div
-					class="grid h-11 w-11 place-items-center rounded-full bg-[#e7efff] text-sm font-extrabold text-[#4880ff]"
+			{#if api.mode === 'live' && !authUser}
+				<button
+					type="button"
+					onclick={() => void login()}
+					disabled={authBusy || !isCognitoConfigured()}
+					class="rounded-lg bg-[#4880ff] px-4 py-2.5 text-sm font-bold text-white transition hover:bg-[#3d72e8] disabled:cursor-not-allowed disabled:opacity-50"
+					>{authBusy ? 'Redirecting…' : 'Sign in'}</button
 				>
-					MJ
+			{:else}
+				<div class="flex items-center gap-3">
+					<div
+						class="grid h-11 w-11 place-items-center rounded-full bg-[#e7efff] text-sm font-extrabold text-[#4880ff]"
+					>
+						{userInitials(authUser)}
+					</div>
+					<div class="hidden sm:block">
+						<p class="max-w-44 truncate text-sm font-bold text-[#404040]">
+							{authUser?.email ?? 'Malay Joshi'}
+						</p>
+						<button
+							type="button"
+							onclick={logout}
+							class="text-left text-xs text-[#565656] hover:text-[#4880ff]"
+							>{api.mode === 'demo' ? 'Demo administrator' : 'Sign out'}</button
+						>
+					</div>
 				</div>
-				<div class="hidden sm:block">
-					<p class="text-sm font-bold text-[#404040]">Malay Joshi</p>
-					<p class="text-xs text-[#565656]">Administrator</p>
-				</div>
-			</div>
+			{/if}
 		</div>
 	</header>
 
@@ -517,13 +577,15 @@
 						</p>{/if}
 					<button
 						type="submit"
-						disabled={submitting}
-						class="flex w-full items-center justify-center gap-2 rounded-lg bg-[#4880ff] px-4 py-3 text-sm font-bold text-white shadow-[0_6px_16px_rgba(72,128,255,0.2)] transition hover:bg-[#3d72e8] disabled:cursor-wait disabled:opacity-60"
+						disabled={submitting || (api.mode === 'live' && !authUser)}
+						class="flex w-full items-center justify-center gap-2 rounded-lg bg-[#4880ff] px-4 py-3 text-sm font-bold text-white shadow-[0_6px_16px_rgba(72,128,255,0.2)] transition hover:bg-[#3d72e8] disabled:cursor-not-allowed disabled:opacity-60"
 						>{submitting
 							? 'Submitting…'
-							: job
-								? 'Run another comparison'
-								: 'Start comparison'}</button
+							: api.mode === 'live' && !authUser
+								? 'Sign in to submit'
+								: job
+									? 'Run another comparison'
+									: 'Start comparison'}</button
 					>
 				</form>
 			</aside>

@@ -1,12 +1,12 @@
-microsoft_saml_metadata_url = "https://login.microsoftonline.com/TENANT_ID/federationmetadata/2007-06/federationmetadata.xml"
-cognito_domain_prefix       = "company-comparison-engine"
+cognito_domain_prefix = "company-comparison-engine"
+frontend_origin       = "https://comparison.company.com"
 
 # Omit in AWS to select the latest Packer-built worker AMI by tags.
 # Set an explicit AMI ID only when pinning or testing a specific image.
 # worker_ami_id = "ami-0123456789abcdef0"
 
 oauth_callback_urls = [
-  "https://comparison.company.com/oauth/callback"
+  "https://comparison.company.com/auth/callback"
 ]
 
 oauth_logout_urls = [

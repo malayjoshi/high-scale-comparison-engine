@@ -7,7 +7,7 @@ and put durable state transitions in the database.
 ## Request path
 
 ```text
-Microsoft Entra ID ──SAML──> Cognito ──JWT──> client
+Native Cognito user ──managed login + PKCE──> client
                                                 │
                                                 ▼
                                       WAF + API Gateway
