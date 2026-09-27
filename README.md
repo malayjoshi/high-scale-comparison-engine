@@ -1,14 +1,20 @@
 # High-scale comparison engine
 
-I built this project to answer a practical systems question: **how do you
-compare tens of thousands of structured files without turning one large job
-into one large point of failure?**
+This project is a distributed dataset reconciliation platform. It answers a
+practical systems question: **how do you compare large versions of structured
+data without turning one reconciliation job into one large point of failure?**
 
-The answer here is a queue-driven AWS design. A client breaks a comparison
-job into folder pairs, API Gateway validates and enqueues each pair, and a
-fleet of idempotent workers processes them independently. Results land in S3,
-job state lives in PostgreSQL, and the client receives one callback after the
-last expected pair completes.
+The canonical example is validating a data migration: compare exports from a
+legacy system and its replacement, then report missing records, schema changes,
+and field-level differences. The same operation also applies to ETL validation,
+inventory reconciliation, pricing catalogs, reference data, and configuration
+drift.
+
+The implementation uses a queue-driven AWS design. A client divides the two
+dataset versions into folder pairs, API Gateway validates and enqueues each
+pair, and a fleet of idempotent workers processes them independently. Results
+land in S3, job state lives in PostgreSQL, and the client receives one callback
+after the last expected pair completes.
 
 This is a portfolio project, but the failure handling is deliberately real:
 messages have leases, workers heartbeat, duplicate deliveries are safe, final
@@ -26,6 +32,28 @@ allow-listed.
 - Streaming equality checks that skip CSV parsing for unchanged files
 - Deterministic test-data generation and a repeatable scaling benchmark
 - Live pair-level status polling with short-lived links to private S3 results
+
+## Reconciliation model
+
+Each job compares a source dataset with a destination dataset. Folder pairs
+are independent units of work, while files within a pair contain structured
+records. The worker uses the first CSV column as the record key and produces a
+JSON report covering files, columns, keys, and changed values.
+
+For migration validation, the mapping is direct:
+
+| Engine concept | Migration example |
+|---|---|
+| Source dataset | Export from the legacy system |
+| Destination dataset | Export from the migrated system |
+| Folder pair | Matching partition, customer group, or date range |
+| Primary key | Stable record identifier |
+| JSON result | Reconciliation report for that partition |
+
+This is a general comparison engine rather than a migration-specific workflow.
+The queue, worker, state, and result model stays the same when the datasets are
+daily price catalogs, expected and produced ETL output, or desired and deployed
+configuration.
 
 ## Architecture
 

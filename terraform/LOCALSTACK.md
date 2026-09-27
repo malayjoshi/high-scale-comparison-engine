@@ -1,5 +1,10 @@
 # LocalStack deployment
 
+This environment exercises the AWS control plane and the application path for
+the distributed dataset reconciliation platform. The included generated folder
+pairs stand in for partitions from two dataset versions, such as legacy and
+migrated system exports.
+
 The complete Terraform control plane can be created in one LocalStack Pro
 apply. LocalStack must be running with its Pro license activated. The
 repository's `.lstk/config.toml` allows the local frontend through LocalStack's

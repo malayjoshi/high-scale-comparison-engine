@@ -1,7 +1,8 @@
-# Comparison Engine frontend
+# Dataset reconciliation frontend
 
-SvelteKit and Tailwind operations dashboard for submitting folder-pair jobs
-and polling their progress.
+SvelteKit and Tailwind operations dashboard for submitting partitioned dataset
+reconciliation jobs and polling their progress. A folder pair represents one
+matching partition from the source and destination dataset versions.
 
 ## Local portfolio demo
 

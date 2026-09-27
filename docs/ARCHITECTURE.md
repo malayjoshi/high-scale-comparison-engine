@@ -1,8 +1,23 @@
 # Architecture and design decisions
 
-This document explains why the comparison engine is shaped the way it is.
-The short version: keep ingestion cheap, make work independently retryable,
-and put durable state transitions in the database.
+This document explains the distributed dataset reconciliation architecture.
+The canonical workload validates a migration by comparing structured exports
+from a legacy system and its replacement. The same design supports any
+partitionable source-versus-destination comparison. The short version: keep
+ingestion cheap, make work independently retryable, and put durable state
+transitions in the database.
+
+## Workload model
+
+A reconciliation job compares two logical dataset versions. The client maps
+corresponding partitions to folder pairs and submits each pair separately under
+one job ID. Workers compare matching files and keyed CSV records, then write an
+immutable JSON difference report for each pair.
+
+Partitioning is deliberately a client concern. A migration tool might partition
+by customer range, an ETL pipeline by processing date, and a pricing system by
+catalog region. The service only requires resolvable source and destination
+folders, so domain-specific concepts do not leak into the worker or state model.
 
 ## Request path
 
@@ -49,6 +64,9 @@ This gives SQS a useful unit of work. Individual pairs can be retried, workers
 can process the same parent job in parallel, and a partial client submission
 can be resumed with the same job ID. PostgreSQL rejects conflicting ownership,
 callback IDs, totals, and duplicate pair definitions.
+
+It also bounds the retry cost. A failure in one migration partition does not
+repeat comparisons that have already completed in other partitions.
 
 ## Worker lifecycle
 
