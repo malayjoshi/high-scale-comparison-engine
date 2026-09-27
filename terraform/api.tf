@@ -288,16 +288,41 @@ resource "null_resource" "get_job_build" {
 
   provisioner "local-exec" {
     command = <<-EOT
-      set -e
-      VENV_SITE_PACKAGES="${path.module}/../scripts/.venv/lib/python3.14/site-packages"
-      mkdir -p ${path.module}/.build/get-job-tmp
-      cp ${path.module}/../api_handlers/get_job.py ${path.module}/.build/get-job-tmp/
-      if [ -d "$VENV_SITE_PACKAGES/psycopg" ]; then
-        cp -r "$VENV_SITE_PACKAGES/psycopg" ${path.module}/.build/get-job-tmp/
-        find ${path.module}/.build/get-job-tmp -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
-        find ${path.module}/.build/get-job-tmp -type f -name "*.pyc" -delete
-      fi
-      cd ${path.module}/.build/get-job-tmp && zip -rq ${path.module}/.build/get-job.zip .
+      python3 << 'PYTHON_EOF'
+      import os
+      import shutil
+      import zipfile
+      from pathlib import Path
+
+      venv_site = Path("${path.module}/../scripts/.venv/lib/python3.14/site-packages")
+      build_dir = Path("${path.module}/.build/get-job-tmp")
+      zip_file = Path("${path.module}/.build/get-job.zip")
+
+      # Clean and create build directory
+      if build_dir.exists():
+        shutil.rmtree(build_dir)
+      build_dir.mkdir(parents=True, exist_ok=True)
+
+      # Copy handler
+      shutil.copy("${path.module}/../api_handlers/get_job.py", build_dir)
+
+      # Copy psycopg if available
+      if (venv_site / "psycopg").exists():
+        shutil.copytree(venv_site / "psycopg", build_dir / "psycopg")
+
+      # Create zip
+      with zipfile.ZipFile(zip_file, 'w', zipfile.ZIP_DEFLATED) as zf:
+        for root, dirs, files in os.walk(build_dir):
+          # Skip __pycache__ and .pyc files
+          dirs[:] = [d for d in dirs if d != '__pycache__']
+          for file in files:
+            if not file.endswith('.pyc'):
+              file_path = os.path.join(root, file)
+              arcname = os.path.relpath(file_path, build_dir)
+              zf.write(file_path, arcname)
+
+      print(f"Created {zip_file}")
+      PYTHON_EOF
     EOT
     working_dir = path.module
   }
