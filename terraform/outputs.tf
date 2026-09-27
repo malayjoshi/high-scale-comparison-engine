@@ -53,17 +53,22 @@ output "cognito_client_id" {
   value       = aws_cognito_user_pool_client.comparison_engine.id
 }
 
+output "cognito_user_pool_id" {
+  description = "Native Cognito user pool used by the demo frontend"
+  value       = aws_cognito_user_pool.comparison_engine.id
+}
+
+output "cognito_domain_url" {
+  description = "Base URL of the Cognito managed login domain"
+  value       = "https://${aws_cognito_user_pool_domain.comparison_engine.domain}.auth.${data.aws_region.current.region}.amazoncognito.com"
+}
+
 output "cognito_login_url" {
-  description = "Microsoft sign-in URL for the OAuth authorization-code flow"
-  value       = "https://${aws_cognito_user_pool_domain.comparison_engine.domain}.auth.${data.aws_region.current.region}.amazoncognito.com/oauth2/authorize?identity_provider=${aws_cognito_identity_provider.microsoft.provider_name}&response_type=code&client_id=${aws_cognito_user_pool_client.comparison_engine.id}&scope=openid+email+comparison-engine%2Fjobs.write&redirect_uri=${urlencode(var.oauth_callback_urls[0])}"
+  description = "Native Cognito sign-in URL for the OAuth authorization-code flow"
+  value       = "https://${aws_cognito_user_pool_domain.comparison_engine.domain}.auth.${data.aws_region.current.region}.amazoncognito.com/oauth2/authorize?response_type=code&client_id=${aws_cognito_user_pool_client.comparison_engine.id}&scope=openid+email+comparison-engine%2Fjobs.write+comparison-engine%2Fjobs.read&redirect_uri=${urlencode(var.oauth_callback_urls[0])}"
 }
 
-output "microsoft_saml_acs_url" {
-  description = "Reply URL/ACS URL to configure in Microsoft Entra ID or AD FS"
-  value       = "https://${aws_cognito_user_pool_domain.comparison_engine.domain}.auth.${data.aws_region.current.region}.amazoncognito.com/saml2/idpresponse"
-}
-
-output "microsoft_saml_entity_id" {
-  description = "Entity ID to configure in Microsoft Entra ID or AD FS"
-  value       = "urn:amazon:cognito:sp:${aws_cognito_user_pool.comparison_engine.id}"
+output "cognito_logout_url" {
+  description = "Cognito endpoint that clears the managed-login session"
+  value       = "https://${aws_cognito_user_pool_domain.comparison_engine.domain}.auth.${data.aws_region.current.region}.amazoncognito.com/logout?client_id=${aws_cognito_user_pool_client.comparison_engine.id}&logout_uri=${urlencode(var.oauth_logout_urls[0])}"
 }

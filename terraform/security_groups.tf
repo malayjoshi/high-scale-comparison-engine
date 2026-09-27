@@ -84,8 +84,6 @@ resource "aws_security_group" "secrets_manager_endpoint" {
   }
 }
 
-data "aws_region" "current" {}
-
 resource "aws_vpc_endpoint" "sqs" {
   vpc_id              = aws_vpc.comparison_engine_vpc.id
   service_name        = "com.amazonaws.${data.aws_region.current.region}.sqs"

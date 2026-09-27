@@ -6,6 +6,9 @@ terraform {
     aws = {
       source = "hashicorp/aws"
     }
+    null = {
+      source = "hashicorp/null"
+    }
   }
 }
 
@@ -83,3 +86,6 @@ provider "aws" {
   region            = var.aws_region
   s3_use_path_style = var.s3_use_path_style
 }
+
+data "aws_region" "current" {}
+data "aws_caller_identity" "current" {}

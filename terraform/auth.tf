@@ -1,20 +1,10 @@
-variable "microsoft_saml_metadata_url" {
-  description = "HTTPS metadata URL published by Microsoft Entra ID or AD FS"
-  type        = string
-
-  validation {
-    condition     = startswith(var.microsoft_saml_metadata_url, "https://")
-    error_message = "The Microsoft SAML metadata URL must use HTTPS."
-  }
-}
-
 variable "cognito_domain_prefix" {
   description = "Globally unique prefix for the Cognito managed login domain"
   type        = string
 }
 
 variable "oauth_callback_urls" {
-  description = "Allowed application callback URLs after Microsoft sign-in"
+  description = "Allowed frontend callback URLs after Cognito sign-in"
   type        = list(string)
 
   validation {
@@ -26,29 +16,38 @@ variable "oauth_callback_urls" {
 variable "oauth_logout_urls" {
   description = "Allowed application URLs after sign-out"
   type        = list(string)
-  default     = []
+
+  validation {
+    condition     = length(var.oauth_logout_urls) > 0
+    error_message = "At least one OAuth logout URL is required."
+  }
 }
 
 resource "aws_cognito_user_pool" "comparison_engine" {
-  name                = "comparison-engine-users"
-  username_attributes = ["email"]
+  name                     = "comparison-engine-users"
+  username_attributes      = ["email"]
+  auto_verified_attributes = ["email"]
 
   admin_create_user_config {
-    allow_admin_create_user_only = true
-  }
-}
-
-resource "aws_cognito_identity_provider" "microsoft" {
-  user_pool_id  = aws_cognito_user_pool.comparison_engine.id
-  provider_name = "Microsoft"
-  provider_type = "SAML"
-
-  provider_details = {
-    MetadataURL = var.microsoft_saml_metadata_url
+    # Native Cognito sign-up keeps the portfolio demo self-contained. Disable
+    # this in a production tenant where users are provisioned centrally.
+    allow_admin_create_user_only = false
   }
 
-  attribute_mapping = {
-    email = "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress"
+  password_policy {
+    minimum_length                   = 10
+    require_lowercase                = true
+    require_numbers                  = true
+    require_symbols                  = true
+    require_uppercase                = true
+    temporary_password_validity_days = 7
+  }
+
+  account_recovery_setting {
+    recovery_mechanism {
+      name     = "verified_email"
+      priority = 1
+    }
   }
 }
 
@@ -62,6 +61,11 @@ resource "aws_cognito_resource_server" "comparison_engine" {
     scope_description = "Submit comparison jobs"
   }
 
+  scope {
+    scope_name        = "jobs.read"
+    scope_description = "Read job status and results"
+  }
+
 }
 
 resource "aws_cognito_user_pool_client" "comparison_engine" {
@@ -71,16 +75,21 @@ resource "aws_cognito_user_pool_client" "comparison_engine" {
   generate_secret                      = false
   allowed_oauth_flows_user_pool_client = true
   allowed_oauth_flows                  = ["code"]
-  explicit_auth_flows                  = ["ALLOW_REFRESH_TOKEN_AUTH"]
+  explicit_auth_flows = [
+    "ALLOW_USER_SRP_AUTH",
+    "ALLOW_REFRESH_TOKEN_AUTH"
+  ]
   allowed_oauth_scopes = [
     "openid",
     "email",
-    "${aws_cognito_resource_server.comparison_engine.identifier}/jobs.write"
+    "${aws_cognito_resource_server.comparison_engine.identifier}/jobs.write",
+    "${aws_cognito_resource_server.comparison_engine.identifier}/jobs.read"
   ]
   callback_urls                 = var.oauth_callback_urls
   logout_urls                   = var.oauth_logout_urls
-  supported_identity_providers  = [aws_cognito_identity_provider.microsoft.provider_name]
+  supported_identity_providers  = ["COGNITO"]
   prevent_user_existence_errors = "ENABLED"
+  enable_token_revocation       = true
 
   access_token_validity  = 55
   id_token_validity      = 55

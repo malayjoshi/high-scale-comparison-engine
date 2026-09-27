@@ -1,4 +1,18 @@
-data "aws_caller_identity" "current" {}
+variable "frontend_origin" {
+  description = "Browser origin allowed to call the comparison API"
+  type        = string
+
+  validation {
+    condition     = can(regex("^https?://[^/]+$", var.frontend_origin))
+    error_message = "frontend_origin must be an HTTP(S) origin without a trailing slash or path."
+  }
+}
+
+variable "enforce_cognito_scope" {
+  description = "Require jobs.write at API Gateway. Disable only for LocalStack, whose Cognito emulator omits custom scopes from OAuth access tokens."
+  type        = bool
+  default     = true
+}
 
 resource "aws_api_gateway_rest_api" "comparison_engine" {
   name        = "comparison-engine-api"
@@ -47,6 +61,11 @@ resource "aws_api_gateway_model" "comparison_job" {
         minLength = 1
         maxLength = 100
       }
+      user_id = {
+        type      = "string"
+        minLength = 1
+        maxLength = 128
+      }
       source_folder = {
         type    = "string"
         pattern = "^[A-Za-z0-9._-]+$"
@@ -82,9 +101,9 @@ resource "aws_api_gateway_method" "enqueue_job" {
     "application/json" = aws_api_gateway_model.comparison_job.name
   }
 
-  authorization_scopes = [
+  authorization_scopes = var.enforce_cognito_scope ? [
     "${aws_cognito_resource_server.comparison_engine.identifier}/jobs.write"
-  ]
+  ] : []
 }
 
 resource "aws_api_gateway_integration" "sqs" {
@@ -104,9 +123,11 @@ resource "aws_api_gateway_integration" "sqs" {
   request_templates = {
     # Keep ingestion synchronous and small: API Gateway validates and enqueues
     # directly, while the authenticated Cognito subject becomes the user ID.
-    "application/json" = <<-VTL
-      #set($message = "{\"job_id\":\"$util.escapeJavaScript($input.path('$.job_id'))\",\"source_folder\":\"$util.escapeJavaScript($input.path('$.source_folder'))\",\"destination_folder\":\"$util.escapeJavaScript($input.path('$.destination_folder'))\",\"total_expected_pairs\":$input.path('$.total_expected_pairs'),\"timestamp\":\"$util.escapeJavaScript($input.path('$.timestamp'))\",\"callback_id\":\"$util.escapeJavaScript($input.path('$.callback_id'))\",\"user_id\":\"$util.escapeJavaScript($context.authorizer.claims.sub)\"}")Action=SendMessage&MessageBody=$util.urlEncode($message)
-    VTL
+    "application/json" = var.enforce_cognito_scope ? join("\n", [
+      "#set($message = $input.path('$'))",
+      "$util.qr($message.put('user_id', $context.authorizer.claims.sub))",
+      "Action=SendMessage&MessageBody=$util.urlEncode($util.toJson($message))"
+    ]) : "Action=SendMessage&MessageBody=$util.urlEncode($input.body)"
   }
 }
 
@@ -119,6 +140,10 @@ resource "aws_api_gateway_method_response" "accepted" {
   response_models = {
     "application/json" = "Empty"
   }
+
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Origin" = true
+  }
 }
 
 resource "aws_api_gateway_method_response" "bad_gateway_request" {
@@ -129,6 +154,10 @@ resource "aws_api_gateway_method_response" "bad_gateway_request" {
 
   response_models = {
     "application/json" = "Empty"
+  }
+
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Origin" = true
   }
 }
 
@@ -141,6 +170,10 @@ resource "aws_api_gateway_method_response" "enqueue_failed" {
   response_models = {
     "application/json" = "Empty"
   }
+
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Origin" = true
+  }
 }
 
 resource "aws_api_gateway_integration_response" "accepted" {
@@ -152,6 +185,10 @@ resource "aws_api_gateway_integration_response" "accepted" {
 
   response_templates = {
     "application/json" = jsonencode({ status = "queued" })
+  }
+
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Origin" = "'${var.frontend_origin}'"
   }
 
   depends_on = [aws_api_gateway_integration.sqs]
@@ -168,6 +205,10 @@ resource "aws_api_gateway_integration_response" "bad_gateway_request" {
     "application/json" = jsonencode({ status = "rejected" })
   }
 
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Origin" = "'${var.frontend_origin}'"
+  }
+
   depends_on = [aws_api_gateway_integration.sqs]
 }
 
@@ -181,7 +222,360 @@ resource "aws_api_gateway_integration_response" "enqueue_failed" {
     "application/json" = jsonencode({ status = "failed" })
   }
 
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Origin" = "'${var.frontend_origin}'"
+  }
+
   depends_on = [aws_api_gateway_integration.sqs]
+}
+
+resource "aws_api_gateway_method" "jobs_options" {
+  rest_api_id   = aws_api_gateway_rest_api.comparison_engine.id
+  resource_id   = aws_api_gateway_resource.jobs.id
+  http_method   = "OPTIONS"
+  authorization = "NONE"
+}
+
+resource "aws_api_gateway_integration" "jobs_options" {
+  rest_api_id = aws_api_gateway_rest_api.comparison_engine.id
+  resource_id = aws_api_gateway_resource.jobs.id
+  http_method = aws_api_gateway_method.jobs_options.http_method
+  type        = "MOCK"
+
+  request_templates = {
+    "application/json" = jsonencode({ statusCode = 200 })
+  }
+}
+
+resource "aws_api_gateway_method_response" "jobs_options" {
+  rest_api_id = aws_api_gateway_rest_api.comparison_engine.id
+  resource_id = aws_api_gateway_resource.jobs.id
+  http_method = aws_api_gateway_method.jobs_options.http_method
+  status_code = "200"
+
+  response_models = {
+    "application/json" = "Empty"
+  }
+
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = true
+    "method.response.header.Access-Control-Allow-Methods" = true
+    "method.response.header.Access-Control-Allow-Origin"  = true
+  }
+}
+
+resource "aws_api_gateway_integration_response" "jobs_options" {
+  rest_api_id = aws_api_gateway_rest_api.comparison_engine.id
+  resource_id = aws_api_gateway_resource.jobs.id
+  http_method = aws_api_gateway_method.jobs_options.http_method
+  status_code = aws_api_gateway_method_response.jobs_options.status_code
+
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = "'Authorization,Content-Type'"
+    "method.response.header.Access-Control-Allow-Methods" = "'OPTIONS,POST'"
+    "method.response.header.Access-Control-Allow-Origin"  = "'${var.frontend_origin}'"
+  }
+
+  depends_on = [aws_api_gateway_integration.jobs_options]
+}
+
+# Lambda function for GET /jobs/{job_id}
+resource "null_resource" "get_job_build" {
+  triggers = {
+    requirements = filemd5("${path.module}/../api_handlers/requirements.txt")
+    handler      = filemd5("${path.module}/../api_handlers/get_job.py")
+  }
+
+  provisioner "local-exec" {
+    command = <<-EOT
+      set -e
+      mkdir -p ${path.module}/.build/get-job-tmp
+      cp ${path.module}/../api_handlers/get_job.py ${path.module}/.build/get-job-tmp/
+      pip install -r ${path.module}/../api_handlers/requirements.txt -t ${path.module}/.build/get-job-tmp/
+      cd ${path.module}/.build/get-job-tmp && zip -r ${path.module}/.build/get-job.zip . -x "*.pyc" "__pycache__/*"
+    EOT
+    working_dir = path.module
+  }
+}
+
+resource "aws_iam_role" "get_job_lambda" {
+  name = "comparison-engine-get-job-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Action = "sts:AssumeRole"
+      Principal = {
+        Service = "lambda.amazonaws.com"
+      }
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "get_job_lambda" {
+  name = "comparison-engine-get-job-policy"
+  role = aws_iam_role.get_job_lambda.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "logs:CreateLogGroup",
+          "logs:CreateLogStream",
+          "logs:PutLogEvents"
+        ]
+        Resource = "arn:aws:logs:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:log-group:/aws/lambda/comparison-engine-get-job:*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "ec2:CreateNetworkInterface",
+          "ec2:DescribeNetworkInterfaces",
+          "ec2:DeleteNetworkInterface"
+        ]
+        Resource = "*"
+      },
+      {
+        Effect = "Allow"
+        Action = "secretsmanager:GetSecretValue"
+        Resource = "arn:aws:secretsmanager:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:secret:rds!db-${aws_db_instance.comparison_engine.resource_id}/*"
+      }
+    ]
+  })
+}
+
+resource "aws_lambda_function" "get_job" {
+  function_name = "comparison-engine-get-job"
+  role          = aws_iam_role.get_job_lambda.arn
+  runtime       = "python3.13"
+  handler       = "get_job.lambda_handler"
+  timeout       = 15
+  memory_size   = 256
+
+  filename         = "${path.module}/.build/get-job.zip"
+  source_code_hash = filebase64sha256("${path.module}/../api_handlers/get_job.py")
+
+  vpc_config {
+    subnet_ids         = [aws_subnet.comparison_engine_rds_1.id, aws_subnet.comparison_engine_rds_2.id]
+    security_group_ids = [aws_security_group.lambda_sg.id]
+  }
+
+  environment {
+    variables = {
+      DB_HOST          = aws_db_instance.comparison_engine.address
+      DB_PORT          = aws_db_instance.comparison_engine.port
+      DB_NAME          = aws_db_instance.comparison_engine.db_name
+      DB_USER          = aws_db_instance.comparison_engine.username
+      DB_SECRET_ARN    = "arn:aws:secretsmanager:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:secret:rds!db-${aws_db_instance.comparison_engine.resource_id}/*"
+      FRONTEND_ORIGIN  = var.frontend_origin
+    }
+  }
+
+  depends_on = [aws_iam_role_policy.get_job_lambda, null_resource.get_job_build]
+}
+
+resource "aws_lambda_permission" "get_job_api_gateway" {
+  statement_id  = "AllowAPIGatewayInvoke"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.get_job.function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_api_gateway_rest_api.comparison_engine.execution_arn}/*/*"
+}
+
+# Security group for Lambda to access RDS
+resource "aws_security_group" "lambda_sg" {
+  name        = "comparison-engine-lambda-sg"
+  description = "Allow Lambda functions to access RDS"
+  vpc_id      = aws_vpc.comparison_engine_vpc.id
+
+  egress {
+    description     = "PostgreSQL to RDS"
+    protocol        = "tcp"
+    from_port       = 5432
+    to_port         = 5432
+    security_groups = [aws_security_group.rds.id]
+  }
+
+  egress {
+    description = "DNS resolution"
+    protocol    = "udp"
+    from_port   = 53
+    to_port     = 53
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name = "comparison-engine-lambda-sg"
+  }
+}
+
+# API Gateway resource for /jobs/{job_id}
+resource "aws_api_gateway_resource" "job_detail" {
+  rest_api_id = aws_api_gateway_rest_api.comparison_engine.id
+  parent_id   = aws_api_gateway_resource.jobs.id
+  path_part   = "{job_id}"
+}
+
+# GET method for job status
+resource "aws_api_gateway_method" "get_job" {
+  rest_api_id          = aws_api_gateway_rest_api.comparison_engine.id
+  resource_id          = aws_api_gateway_resource.job_detail.id
+  http_method          = "GET"
+  authorization        = "COGNITO_USER_POOLS"
+  authorizer_id        = aws_api_gateway_authorizer.comparison_engine.id
+  authorization_scopes = var.enforce_cognito_scope ? [
+    "${aws_cognito_resource_server.comparison_engine.identifier}/jobs.read"
+  ] : []
+}
+
+resource "aws_api_gateway_integration" "get_job" {
+  rest_api_id             = aws_api_gateway_rest_api.comparison_engine.id
+  resource_id             = aws_api_gateway_resource.job_detail.id
+  http_method             = aws_api_gateway_method.get_job.http_method
+  integration_http_method = "POST"
+  type                    = "AWS_PROXY"
+  uri                     = aws_lambda_function.get_job.invoke_arn
+}
+
+resource "aws_api_gateway_method_response" "get_job_success" {
+  rest_api_id = aws_api_gateway_rest_api.comparison_engine.id
+  resource_id = aws_api_gateway_resource.job_detail.id
+  http_method = aws_api_gateway_method.get_job.http_method
+  status_code = "200"
+
+  response_models = {
+    "application/json" = "Empty"
+  }
+
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Origin" = true
+  }
+}
+
+resource "aws_api_gateway_method_response" "get_job_not_found" {
+  rest_api_id = aws_api_gateway_rest_api.comparison_engine.id
+  resource_id = aws_api_gateway_resource.job_detail.id
+  http_method = aws_api_gateway_method.get_job.http_method
+  status_code = "404"
+
+  response_models = {
+    "application/json" = "Empty"
+  }
+
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Origin" = true
+  }
+}
+
+resource "aws_api_gateway_method_response" "get_job_error" {
+  rest_api_id = aws_api_gateway_rest_api.comparison_engine.id
+  resource_id = aws_api_gateway_resource.job_detail.id
+  http_method = aws_api_gateway_method.get_job.http_method
+  status_code = "500"
+
+  response_models = {
+    "application/json" = "Empty"
+  }
+
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Origin" = true
+  }
+}
+
+resource "aws_api_gateway_integration_response" "get_job_success" {
+  rest_api_id       = aws_api_gateway_rest_api.comparison_engine.id
+  resource_id       = aws_api_gateway_resource.job_detail.id
+  http_method       = aws_api_gateway_method.get_job.http_method
+  status_code       = "200"
+  selection_pattern = "2\\d{2}"
+
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Origin" = "'${var.frontend_origin}'"
+  }
+
+  depends_on = [aws_api_gateway_integration.get_job]
+}
+
+resource "aws_api_gateway_integration_response" "get_job_not_found" {
+  rest_api_id       = aws_api_gateway_rest_api.comparison_engine.id
+  resource_id       = aws_api_gateway_resource.job_detail.id
+  http_method       = aws_api_gateway_method.get_job.http_method
+  status_code       = "404"
+  selection_pattern = "404"
+
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Origin" = "'${var.frontend_origin}'"
+  }
+
+  depends_on = [aws_api_gateway_integration.get_job]
+}
+
+resource "aws_api_gateway_integration_response" "get_job_error" {
+  rest_api_id       = aws_api_gateway_rest_api.comparison_engine.id
+  resource_id       = aws_api_gateway_resource.job_detail.id
+  http_method       = aws_api_gateway_method.get_job.http_method
+  status_code       = "500"
+  selection_pattern = "5\\d{2}"
+
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Origin" = "'${var.frontend_origin}'"
+  }
+
+  depends_on = [aws_api_gateway_integration.get_job]
+}
+
+# OPTIONS method for CORS on /jobs/{job_id}
+resource "aws_api_gateway_method" "job_detail_options" {
+  rest_api_id   = aws_api_gateway_rest_api.comparison_engine.id
+  resource_id   = aws_api_gateway_resource.job_detail.id
+  http_method   = "OPTIONS"
+  authorization = "NONE"
+}
+
+resource "aws_api_gateway_integration" "job_detail_options" {
+  rest_api_id = aws_api_gateway_rest_api.comparison_engine.id
+  resource_id = aws_api_gateway_resource.job_detail.id
+  http_method = aws_api_gateway_method.job_detail_options.http_method
+  type        = "MOCK"
+
+  request_templates = {
+    "application/json" = jsonencode({ statusCode = 200 })
+  }
+}
+
+resource "aws_api_gateway_method_response" "job_detail_options" {
+  rest_api_id = aws_api_gateway_rest_api.comparison_engine.id
+  resource_id = aws_api_gateway_resource.job_detail.id
+  http_method = aws_api_gateway_method.job_detail_options.http_method
+  status_code = "200"
+
+  response_models = {
+    "application/json" = "Empty"
+  }
+
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = true
+    "method.response.header.Access-Control-Allow-Methods" = true
+    "method.response.header.Access-Control-Allow-Origin"  = true
+  }
+}
+
+resource "aws_api_gateway_integration_response" "job_detail_options" {
+  rest_api_id = aws_api_gateway_rest_api.comparison_engine.id
+  resource_id = aws_api_gateway_resource.job_detail.id
+  http_method = aws_api_gateway_method.job_detail_options.http_method
+  status_code = aws_api_gateway_method_response.job_detail_options.status_code
+
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = "'Authorization,Content-Type'"
+    "method.response.header.Access-Control-Allow-Methods" = "'OPTIONS,GET'"
+    "method.response.header.Access-Control-Allow-Origin"  = "'${var.frontend_origin}'"
+  }
+
+  depends_on = [aws_api_gateway_integration.job_detail_options]
 }
 
 resource "aws_api_gateway_deployment" "comparison_engine" {
@@ -201,14 +595,31 @@ resource "aws_api_gateway_deployment" "comparison_engine" {
       aws_api_gateway_integration.sqs.request_templates,
       aws_api_gateway_integration_response.accepted.id,
       aws_api_gateway_integration_response.bad_gateway_request.id,
-      aws_api_gateway_integration_response.enqueue_failed.id
+      aws_api_gateway_integration_response.enqueue_failed.id,
+      aws_api_gateway_method.jobs_options.id,
+      aws_api_gateway_integration.jobs_options.id,
+      aws_api_gateway_integration_response.jobs_options.id,
+      aws_api_gateway_resource.job_detail.id,
+      aws_api_gateway_method.get_job.id,
+      aws_api_gateway_integration.get_job.id,
+      aws_api_gateway_method.job_detail_options.id,
+      aws_api_gateway_integration.job_detail_options.id,
+      var.frontend_origin
     ]))
   }
 
   depends_on = [
     aws_api_gateway_integration_response.accepted,
     aws_api_gateway_integration_response.bad_gateway_request,
-    aws_api_gateway_integration_response.enqueue_failed
+    aws_api_gateway_integration_response.enqueue_failed,
+    aws_api_gateway_integration_response.jobs_options,
+    aws_api_gateway_method_response.get_job_success,
+    aws_api_gateway_method_response.get_job_not_found,
+    aws_api_gateway_method_response.get_job_error,
+    aws_api_gateway_integration_response.get_job_success,
+    aws_api_gateway_integration_response.get_job_not_found,
+    aws_api_gateway_integration_response.get_job_error,
+    aws_api_gateway_integration_response.job_detail_options
   ]
 
   lifecycle {
