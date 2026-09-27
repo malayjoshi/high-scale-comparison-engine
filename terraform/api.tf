@@ -306,9 +306,14 @@ resource "null_resource" "get_job_build" {
       # Copy handler
       shutil.copy("${path.module}/../api_handlers/get_job.py", build_dir)
 
-      # Copy psycopg if available
-      if (venv_site / "psycopg").exists():
-        shutil.copytree(venv_site / "psycopg", build_dir / "psycopg")
+      # Copy psycopg and dependencies
+      for pkg in ["psycopg", "psycopg_binary", "psycopg_binary.libs"]:
+        pkg_path = venv_site / pkg
+        if pkg_path.exists():
+          if pkg_path.is_dir():
+            shutil.copytree(pkg_path, build_dir / pkg)
+          else:
+            shutil.copy(pkg_path, build_dir / pkg)
 
       # Create zip
       with zipfile.ZipFile(zip_file, 'w', zipfile.ZIP_DEFLATED) as zf:
@@ -388,9 +393,13 @@ resource "aws_lambda_function" "get_job" {
   filename         = "${path.module}/.build/get-job.zip"
   source_code_hash = filebase64sha256("${path.module}/../api_handlers/get_job.py")
 
-  vpc_config {
-    subnet_ids         = [aws_subnet.comparison_engine_rds_1.id, aws_subnet.comparison_engine_rds_2.id]
-    security_group_ids = [aws_security_group.lambda_sg.id]
+  # VPC configuration only for real AWS; LocalStack doesn't need it
+  dynamic "vpc_config" {
+    for_each = var.enforce_cognito_scope ? [1] : []
+    content {
+      subnet_ids         = [aws_subnet.comparison_engine_rds_1.id, aws_subnet.comparison_engine_rds_2.id]
+      security_group_ids = [aws_security_group.lambda_sg.id]
+    }
   }
 
   environment {
