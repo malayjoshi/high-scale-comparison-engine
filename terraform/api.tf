@@ -289,10 +289,15 @@ resource "null_resource" "get_job_build" {
   provisioner "local-exec" {
     command = <<-EOT
       set -e
+      VENV_SITE_PACKAGES="${path.module}/../scripts/.venv/lib/python3.14/site-packages"
       mkdir -p ${path.module}/.build/get-job-tmp
       cp ${path.module}/../api_handlers/get_job.py ${path.module}/.build/get-job-tmp/
-      python -m pip install -q -r ${path.module}/../api_handlers/requirements.txt -t ${path.module}/.build/get-job-tmp/
-      cd ${path.module}/.build/get-job-tmp && zip -rq ${path.module}/.build/get-job.zip . -x "*.pyc" "__pycache__/*" "*.dist-info/*"
+      if [ -d "$VENV_SITE_PACKAGES/psycopg" ]; then
+        cp -r "$VENV_SITE_PACKAGES/psycopg" ${path.module}/.build/get-job-tmp/
+        find ${path.module}/.build/get-job-tmp -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
+        find ${path.module}/.build/get-job-tmp -type f -name "*.pyc" -delete
+      fi
+      cd ${path.module}/.build/get-job-tmp && zip -rq ${path.module}/.build/get-job.zip .
     EOT
     working_dir = path.module
   }
