@@ -291,8 +291,8 @@ resource "null_resource" "get_job_build" {
       set -e
       mkdir -p ${path.module}/.build/get-job-tmp
       cp ${path.module}/../api_handlers/get_job.py ${path.module}/.build/get-job-tmp/
-      pip install -r ${path.module}/../api_handlers/requirements.txt -t ${path.module}/.build/get-job-tmp/
-      cd ${path.module}/.build/get-job-tmp && zip -r ${path.module}/.build/get-job.zip . -x "*.pyc" "__pycache__/*"
+      python -m pip install -q -r ${path.module}/../api_handlers/requirements.txt -t ${path.module}/.build/get-job-tmp/
+      cd ${path.module}/.build/get-job-tmp && zip -rq ${path.module}/.build/get-job.zip . -x "*.pyc" "__pycache__/*" "*.dist-info/*"
     EOT
     working_dir = path.module
   }
